@@ -1,0 +1,128 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(uid())).data;
+    }
+
+    function userExists() {
+      return isSignedIn() &&
+        firestore.exists(/databases/(default)/documents/users/$(uid()));
+    }
+
+    // Voir firestore.rules pour le contexte : `role` est stocké sous forme
+    // de libellé affiché ('Chauffeur', 'Superviseur Flotte'...), pas sous
+    // l'identifiant canonique de role.dart. On accepte les deux formats.
+    function canonicalize(raw) {
+      return {
+        'Chauffeur': 'chauffeur', 'chauffeur': 'chauffeur',
+        'RH': 'rh', 'rh': 'rh',
+        'Superviseur Flotte': 'superviseurFlotte', 'superviseurFlotte': 'superviseurFlotte',
+        'Superviseur Général': 'superviseurGeneral', 'superviseurGeneral': 'superviseurGeneral',
+        'Superviseur Mine': 'superviseurMine', 'superviseurMine': 'superviseurMine',
+        'Superviseur Port': 'superviseurPort', 'superviseurPort': 'superviseurPort',
+        'Superviseur Stockage': 'superviseurStockage', 'superviseurStockage': 'superviseurStockage',
+        'Pompiste': 'pompiste', 'pompiste': 'pompiste',
+        'Chef Ravitaillement': 'chefRavitaillement', 'chefRavitaillement': 'chefRavitaillement',
+        'Responsable Approvisionnement': 'responsableApprovisionnement', 'responsableApprovisionnement': 'responsableApprovisionnement',
+        'Responsable Opérations': 'responsableOperations', 'responsableOperations': 'responsableOperations',
+        'Centre Technique': 'centreTechnique', 'centreTechnique': 'centreTechnique',
+        'Direction': 'direction', 'direction': 'direction'
+      }[raw];
+    }
+
+    function role() {
+      return canonicalize(userDoc().role);
+    }
+
+    function isActiveUser() {
+      return userExists() && userDoc().isActive != false;
+    }
+
+    function hasRole(r) {
+      return isActiveUser() && role() == r;
+    }
+
+    function hasAnyRole(roles) {
+      return isActiveUser() && role() in roles;
+    }
+
+    function isTopFleetManager() {
+      return hasAnyRole(['direction', 'superviseurGeneral']);
+    }
+
+    // Lu sur le document fleet (supervisorId), pas sur users/{uid}.fleetId.
+    function isSupervisorOfFleet(fleetId) {
+      return hasRole('superviseurFlotte') && fleetId != null &&
+        firestore.get(/databases/(default)/documents/fleets/$(fleetId)).data.supervisorId == uid();
+    }
+
+    function truckFleetId(truckId) {
+      return firestore.get(/databases/(default)/documents/trucks/$(truckId)).data.fleetId;
+    }
+
+    function isValidImage() {
+      return request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Photos de profil utilisateurs et chauffeurs
+    match /users/{userId}/{fileName} {
+      allow read: if isSignedIn() && (
+        uid() == userId || isTopFleetManager() ||
+        hasAnyRole(['rh']) ||
+        hasRole('superviseurFlotte')
+      );
+      allow write: if isSignedIn() && (uid() == userId || isTopFleetManager() || hasAnyRole(['rh']))
+        && isValidImage();
+    }
+
+    // Photos d'inspection véhicules — visibles/gérables par la flotte concernée
+    match /inspections/{truckId}/{fileName} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasAnyRole(['centreTechnique', 'responsableOperations']) ||
+        isSupervisorOfFleet(truckFleetId(truckId))
+      );
+      allow write: if (
+          isTopFleetManager() ||
+          isSupervisorOfFleet(truckFleetId(truckId))
+        ) && isValidImage();
+    }
+
+    // Photos de pesée
+    match /weighings/{truckId}/{fileName} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasAnyRole(['superviseurMine', 'superviseurPort', 'superviseurStockage', 'responsableOperations']) ||
+        isSupervisorOfFleet(truckFleetId(truckId))
+      );
+      allow write: if hasAnyRole(['superviseurMine', 'superviseurPort', 'superviseurStockage'])
+        && isValidImage() || isTopFleetManager() && isValidImage();
+    }
+
+    // Photos carburant (bon de commande / reçu)
+    match /fuel/{requestId}/{fileName} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasAnyRole(['pompiste', 'chefRavitaillement', 'responsableApprovisionnement', 'responsableOperations', 'superviseurFlotte'])
+      );
+      allow write: if hasAnyRole(['pompiste', 'chefRavitaillement']) && isValidImage()
+        || isTopFleetManager() && isValidImage();
+    }
+
+    // Tout le reste : refusé par défaut
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

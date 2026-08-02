@@ -1,0 +1,8 @@
+# Fonts directory
+# Add your custom fonts here (e.g., Satoshi-Regular.otf)
+# 
+# Recommended fonts for this project:
+# - Satoshi (https://www.fontshare.com/fonts/satoshi)
+# - Inter (fallback via Google Fonts)
+#
+# After adding fonts, update pubspec.yaml accordingly

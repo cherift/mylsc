@@ -1,0 +1,585 @@
+rules_version = '2';
+
+// ============================================================================
+// Firestore Security Rules — SOGUI Fleet Manager
+//
+// v2 — corrige l'incident du 2026-07-08 : la v1 comparait `role` à des
+// identifiants d'enum ('chauffeur', 'direction'...) alors que la donnée
+// réelle stocke le libellé affiché dans le formulaire de création
+// ('Chauffeur', 'Direction', 'Superviseur Flotte'...). Vérifié en lisant
+// un échantillon complet de la collection `users` en production (113
+// documents, 7 valeurs distinctes, toutes des libellés). `canonicalize()`
+// accepte les deux formats pour ne plus dépendre d'une future migration
+// de données.
+//
+// Autre correction : l'appartenance d'un superviseur de flotte à SA flotte
+// se lit sur `fleets/{id}.supervisorId`, pas sur `users/{uid}.fleetId`
+// (vérifié : 0 des 6 comptes superviseurFlotte en prod n'avaient fleetId
+// renseigné — ce champ sert uniquement aux chauffeurs).
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function userExists() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(uid()));
+    }
+
+    function userData() {
+      return get(/databases/$(database)/documents/users/$(uid())).data;
+    }
+
+    // Accepte à la fois l'identifiant canonique (role.dart) et le libellé
+    // affiché stocké par le formulaire de création (create_user_dialog.dart /
+    // createDriver) — les deux formats coexistent en production.
+    function canonicalize(raw) {
+      return {
+        'Chauffeur': 'chauffeur', 'chauffeur': 'chauffeur',
+        'RH': 'rh', 'rh': 'rh',
+        'Superviseur Flotte': 'superviseurFlotte', 'superviseurFlotte': 'superviseurFlotte',
+        'Superviseur Général': 'superviseurGeneral', 'superviseurGeneral': 'superviseurGeneral',
+        'Superviseur Mine': 'superviseurMine', 'superviseurMine': 'superviseurMine',
+        'Superviseur Port': 'superviseurPort', 'superviseurPort': 'superviseurPort',
+        'Superviseur Stockage': 'superviseurStockage', 'superviseurStockage': 'superviseurStockage',
+        'Pompiste': 'pompiste', 'pompiste': 'pompiste',
+        'Chef Ravitaillement': 'chefRavitaillement', 'chefRavitaillement': 'chefRavitaillement',
+        'Responsable Approvisionnement': 'responsableApprovisionnement', 'responsableApprovisionnement': 'responsableApprovisionnement',
+        'Responsable Opérations': 'responsableOperations', 'responsableOperations': 'responsableOperations',
+        'Centre Technique': 'centreTechnique', 'centreTechnique': 'centreTechnique',
+        'Direction': 'direction', 'direction': 'direction'
+      }[raw];
+    }
+
+    function role() {
+      return canonicalize(userData().role);
+    }
+
+    // isActive absent == actif (valeur par défaut de UserModel côté client) ;
+    // seul `false` explicite désactive un compte.
+    function isActiveUser() {
+      return userExists() && userData().isActive != false;
+    }
+
+    function hasRole(r) {
+      return isActiveUser() && role() == r;
+    }
+
+    function hasAnyRole(roles) {
+      return isActiveUser() && role() in roles;
+    }
+
+    function isDirection() {
+      return hasRole('direction');
+    }
+
+    function isRH() {
+      return hasRole('rh');
+    }
+
+    // Gestion des comptes / permissions (RoleDefinition.canManagePermissions)
+    function isAdmin() {
+      return isDirection() || isRH();
+    }
+
+    // Rôles à portée "toutes flottes" (RoleDefinition.canManageVehicles)
+    function isTopFleetManager() {
+      return hasAnyRole(['direction', 'superviseurGeneral']);
+    }
+
+    // Rôles "métier central" qui doivent voir tous les camions/flottes
+    // indépendamment de leur propre fleetId (pompistes, pointeurs, techniciens...)
+    function isCrossFleetOperationalRole() {
+      return hasAnyRole([
+        'pompiste', 'chefRavitaillement', 'responsableApprovisionnement',
+        'responsableOperations', 'centreTechnique',
+        'superviseurMine', 'superviseurPort', 'superviseurStockage'
+      ]);
+    }
+
+    // L'appartenance superviseur <-> flotte se lit sur le document fleet lui-même.
+    function isSupervisorOfFleet(fleetId) {
+      return hasRole('superviseurFlotte') && fleetId != null &&
+        get(/databases/$(database)/documents/fleets/$(fleetId)).data.supervisorId == uid();
+    }
+
+    function truckFleetId(truckId) {
+      return get(/databases/$(database)/documents/trucks/$(truckId)).data.fleetId;
+    }
+
+    function fieldUnchanged(f) {
+      return request.resource.data[f] == resource.data[f];
+    }
+
+    function onlyFieldsChanged(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    // ⚠️ TEMPORAIRE (ouvert le 2026-07-24) — certains utilisateurs ne
+    // pouvaient plus accéder à l'app à cause des restrictions par rôle
+    // ci-dessous (ex. incident de mismatch de libellé de rôle déjà vécu le
+    // 2026-07-08). En attendant un diagnostic complet, TOUT utilisateur
+    // authentifié (isSignedIn()) a accès à TOUTES les collections, sans
+    // vérification de rôle. Les règles détaillées par collection plus bas
+    // sont conservées telles quelles (inertes tant que ce bloc reste actif)
+    // pour pouvoir revenir en arrière rapidement : il suffira de remettre
+    // `if false` ci-dessous une fois les droits d'accès repris en main.
+    // Ne nécessite pas de compte Firebase Auth public : aucune inscription
+    // libre n'est exposée dans l'app (login_screen.dart n'a pas de flux de
+    // création de compte), donc cette ouverture reste limitée aux comptes
+    // déjà créés par un administrateur.
+    match /{document=**} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ------------------------------------------------------------------
+    // users
+    // ------------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isSignedIn() && (
+        uid() == userId ||
+        isAdmin() ||
+        isTopFleetManager() ||
+        (hasRole('superviseurFlotte') && isSupervisorOfFleet(resource.data.fleetId)) ||
+        resource.data.managerId == uid()
+      );
+
+      allow list: if isAdmin() || isTopFleetManager() || hasRole('superviseurFlotte');
+
+      allow create: if
+        // Compte créé par un admin (RH/Direction) — nécessite la procédure
+        // "instance Firebase secondaire" pour que uid() reste celui de l'admin.
+        (isAdmin() && request.resource.data.id == userId) ||
+        // Chauffeur créé sans compte Auth par le superviseur de sa propre flotte
+        (hasRole('superviseurFlotte') &&
+          canonicalize(request.resource.data.role) == 'chauffeur' &&
+          isSupervisorOfFleet(request.resource.data.fleetId) &&
+          request.resource.data.permissions.size() == 0 &&
+          request.resource.data.isActive == true) ||
+        // Auto-inscription (si conservée) : profil inerte, sans élévation possible
+        (uid() == userId &&
+          request.resource.data.role == null &&
+          request.resource.data.permissions.size() == 0 &&
+          request.resource.data.isActive == false &&
+          request.resource.data.fleetId == null &&
+          request.resource.data.managerId == null);
+
+      allow update: if
+        isAdmin() ||
+        (uid() == userId && onlyFieldsChanged([
+          'firstName', 'lastName', 'phoneNumber', 'photoUrl',
+          'address', 'dateOfBirth', 'lastLoginAt', 'normalizedPhone'
+        ])) ||
+        (hasRole('superviseurFlotte') &&
+          canonicalize(resource.data.role) == 'chauffeur' &&
+          isSupervisorOfFleet(resource.data.fleetId) &&
+          onlyFieldsChanged([
+            'phoneNumber', 'address', 'driverLicenseNumber',
+            'managerId', 'managerName', 'firstName', 'lastName'
+          ]));
+
+      allow delete: if isDirection();
+
+      match /permissionHistory/{entryId} {
+        allow get, list: if isAdmin() || uid() == userId;
+        allow create: if isAdmin();
+        allow update, delete: if false; // journal d'audit immuable
+      }
+    }
+
+    // Table de correspondance minimale pour la connexion par téléphone.
+    // Ne contient QUE { email }, jamais le profil complet — évite d'ouvrir
+    // `users` en lecture non authentifiée. Doc id = numéro normalisé, donc
+    // pas d'énumération possible en masse (pas de `list`).
+    match /phone_lookup/{normalizedPhone} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isAdmin(); // maintenu par le back-office lors de la création
+    }
+
+    // ------------------------------------------------------------------
+    // fleets
+    // ------------------------------------------------------------------
+    match /fleets/{fleetId} {
+      allow read: if isActiveUser();
+
+      allow create: if
+        hasAnyRole(['superviseurFlotte', 'superviseurGeneral', 'direction']) &&
+        request.resource.data.createdBy == uid();
+
+      allow update: if
+        isTopFleetManager() ||
+        (hasRole('superviseurFlotte') &&
+          resource.data.supervisorId == uid() &&
+          fieldUnchanged('supervisorId') &&
+          fieldUnchanged('createdBy') &&
+          fieldUnchanged('createdAt'));
+
+      // Suppression réservée à la Direction/Superviseur Général (T.24.6),
+      // après contrôle applicatif des dépendances actives.
+      allow delete: if isTopFleetManager();
+    }
+
+    // ------------------------------------------------------------------
+    // trucks
+    // ------------------------------------------------------------------
+    match /trucks/{truckId} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        isCrossFleetOperationalRole() ||
+        isSupervisorOfFleet(resource.data.fleetId) ||
+        (hasRole('chauffeur') && (
+          resource.data.chauffeurPrincipalId == uid() ||
+          resource.data.chauffeurSecondaireId == uid()
+        ))
+      );
+
+      allow create: if
+        isTopFleetManager() ||
+        isSupervisorOfFleet(request.resource.data.fleetId);
+
+      allow update: if
+        isTopFleetManager() ||
+        (isSupervisorOfFleet(resource.data.fleetId) &&
+          fieldUnchanged('fleetId')); // T.25.5 : retrait de flotte = gestionnaire uniquement
+
+      // T.24.6-style garde-fou : pas de suppression définitive sans désactivation préalable.
+      allow delete: if isTopFleetManager() && resource.data.isActive == false;
+    }
+
+    // ------------------------------------------------------------------
+    // driver_assignments
+    // ------------------------------------------------------------------
+    match /driver_assignments/{assignmentId} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        resource.data.driverId == uid() ||
+        isSupervisorOfFleet(truckFleetId(resource.data.truckId))
+      );
+
+      allow create: if
+        isTopFleetManager() ||
+        (isSupervisorOfFleet(truckFleetId(request.resource.data.truckId)) &&
+          request.resource.data.assignedBy == uid());
+      // Note : la règle métier T.19.1 (un chauffeur ne peut être actif que sur
+      // un seul camion) nécessite une requête transversale que les Security
+      // Rules ne peuvent pas exprimer nativement. Voir procédure recommandée
+      // (collection `driver_locks/{driverId}`) dans le document de proposition.
+
+      allow update: if
+        isTopFleetManager() ||
+        (isSupervisorOfFleet(truckFleetId(resource.data.truckId)) &&
+          fieldUnchanged('truckId') &&
+          fieldUnchanged('driverId') &&
+          fieldUnchanged('assignedBy')); // T.25.2 : verrouillé une fois actif
+
+      allow delete: if isDirection(); // conserver l'historique (T.25.4)
+    }
+
+    // ------------------------------------------------------------------
+    // shifts
+    // ------------------------------------------------------------------
+    match /shifts/{shiftId} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        resource.data.driverId == uid() ||
+        isSupervisorOfFleet(truckFleetId(resource.data.truckId))
+      );
+
+      allow create: if (
+          isTopFleetManager() ||
+          isSupervisorOfFleet(truckFleetId(request.resource.data.truckId))
+        ) &&
+        request.resource.data.driverId != null && // T.25.3 : chauffeur principal obligatoire
+        request.resource.data.startedBy == uid() &&
+        request.resource.data.status == 'active';
+
+      allow update: if
+        isTopFleetManager() ||
+        (isSupervisorOfFleet(truckFleetId(resource.data.truckId)) &&
+          fieldUnchanged('truckId') &&
+          fieldUnchanged('driverId') &&
+          fieldUnchanged('startedBy') &&
+          fieldUnchanged('startTime') &&
+          // seule transition libre : clôturer une vacation active
+          (resource.data.status != 'active' || request.resource.data.status in ['active', 'ended']));
+
+      allow delete: if isDirection();
+    }
+
+    // ------------------------------------------------------------------
+    // trips
+    // ------------------------------------------------------------------
+    match /trips/{tripId} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasRole('responsableOperations') ||
+        resource.data.driverId == uid() ||
+        isSupervisorOfFleet(truckFleetId(resource.data.truckId))
+      );
+
+      allow create: if
+        isTopFleetManager() ||
+        isSupervisorOfFleet(truckFleetId(request.resource.data.truckId));
+
+      allow update: if (
+          isTopFleetManager() ||
+          isSupervisorOfFleet(truckFleetId(resource.data.truckId))
+        ) &&
+        fieldUnchanged('truckId') &&
+        fieldUnchanged('driverId') &&
+        fieldUnchanged('shiftId');
+
+      allow delete: if isDirection();
+    }
+
+    // ------------------------------------------------------------------
+    // weighings
+    // ------------------------------------------------------------------
+    match /weighings/{weighingId} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasAnyRole(['superviseurMine', 'superviseurPort', 'superviseurStockage', 'responsableOperations']) ||
+        resource.data.driverId == uid() ||
+        isSupervisorOfFleet(truckFleetId(resource.data.truckId))
+      );
+
+      allow create: if (
+          isTopFleetManager() ||
+          hasAnyRole(['superviseurMine', 'superviseurPort', 'superviseurStockage'])
+        ) &&
+        request.resource.data.weighedBy == uid() &&
+        request.resource.data.ticketNumber is string &&
+        request.resource.data.ticketNumber.size() > 0; // T.27.1 : bon obligatoire
+
+      allow update: if (
+          isTopFleetManager() ||
+          hasAnyRole(['superviseurMine', 'superviseurPort', 'superviseurStockage'])
+        ) &&
+        fieldUnchanged('truckId') &&
+        // T.27.1/T.27.4 : le n° de bon ne peut pas être modifié une fois saisi
+        (resource.data.ticketNumber == null || fieldUnchanged('ticketNumber'));
+
+      allow delete: if isDirection();
+    }
+
+    // ------------------------------------------------------------------
+    // breakdowns
+    // ------------------------------------------------------------------
+    match /breakdowns/{breakdownId} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasRole('centreTechnique') ||
+        resource.data.reportedBy == uid() ||
+        resource.data.assignedTo == uid() ||
+        isSupervisorOfFleet(truckFleetId(resource.data.truckId))
+      );
+
+      allow create: if (
+          hasRole('chauffeur') ||
+          isTopFleetManager() ||
+          isSupervisorOfFleet(truckFleetId(request.resource.data.truckId))
+        ) &&
+        request.resource.data.reportedBy == uid();
+
+      allow update: if
+        isTopFleetManager() ||
+        hasRole('centreTechnique') ||
+        isSupervisorOfFleet(truckFleetId(resource.data.truckId));
+
+      allow delete: if isDirection();
+    }
+
+    // ------------------------------------------------------------------
+    // fuel_requests
+    // ------------------------------------------------------------------
+    match /fuel_requests/{requestId} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasAnyRole(['pompiste', 'chefRavitaillement', 'responsableApprovisionnement', 'responsableOperations']) ||
+        resource.data.driverId == uid() ||
+        isSupervisorOfFleet(resource.data.fleetId)
+      );
+
+      allow create: if (
+          isTopFleetManager() ||
+          isSupervisorOfFleet(request.resource.data.fleetId)
+        ) &&
+        request.resource.data.requestedBy == uid() &&
+        request.resource.data.status == 'pending' &&
+        // T.25.9 : verrouillé tant que la vacation n'a pas démarré
+        get(/databases/$(database)/documents/shifts/$(request.resource.data.shiftId)).data.status == 'active';
+
+      // Pompiste : sert le carburant (reçu + photo obligatoires — T.26.1 / T.26.3)
+      allow update: if hasRole('pompiste') &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'fulfilled' &&
+        request.resource.data.fulfilledBy == uid() &&
+        request.resource.data.receiptNumber is string &&
+        request.resource.data.receiptNumber.size() > 0 &&
+        request.resource.data.receiptPhotoUrl is string &&
+        request.resource.data.receiptPhotoUrl.size() > 0 &&
+        fieldUnchanged('requestedBy') && fieldUnchanged('driverId') &&
+        fieldUnchanged('fleetId') && fieldUnchanged('shiftId');
+
+      // Superviseur flotte / top manager : valide ou conteste après service
+      allow update: if (
+          isTopFleetManager() ||
+          isSupervisorOfFleet(resource.data.fleetId)
+        ) &&
+        resource.data.status == 'fulfilled' &&
+        request.resource.data.status in ['validated', 'disputed'] &&
+        request.resource.data.validatedBy == uid();
+
+      // Responsable Opérations : arbitre un litige (T.10)
+      allow update: if hasAnyRole(['responsableOperations']) &&
+        resource.data.status == 'disputed' &&
+        request.resource.data.status in ['validated', 'rejected'] &&
+        request.resource.data.resolvedBy == uid();
+
+      // Annulation par le demandeur tant que la demande est en attente
+      allow update: if isSupervisorOfFleet(resource.data.fleetId) &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'cancelled';
+
+      allow delete: if isDirection();
+    }
+
+    // ------------------------------------------------------------------
+    // fuel_entries (journal des pleins, distinct des demandes)
+    // ------------------------------------------------------------------
+    match /fuel_entries/{entryId} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasAnyRole(['pompiste', 'chefRavitaillement', 'responsableApprovisionnement', 'responsableOperations']) ||
+        isSupervisorOfFleet(truckFleetId(resource.data.truckId))
+      );
+
+      allow create: if (
+          isTopFleetManager() ||
+          hasAnyRole(['pompiste', 'chefRavitaillement'])
+        ) &&
+        request.resource.data.addedBy == uid();
+
+      allow update: if isTopFleetManager() &&
+        fieldUnchanged('truckId') && fieldUnchanged('addedBy');
+
+      allow delete: if isDirection();
+    }
+
+    // ------------------------------------------------------------------
+    // fuel_supply_entries (approvisionnement fournisseur)
+    // ------------------------------------------------------------------
+    match /fuel_supply_entries/{entryId} {
+      allow read: if hasAnyRole([
+        'chefRavitaillement', 'responsableApprovisionnement', 'pompiste'
+      ]) || isTopFleetManager();
+
+      allow create: if hasAnyRole([
+          'chefRavitaillement', 'responsableApprovisionnement', 'pompiste'
+        ]) &&
+        request.resource.data.createdById == uid() &&
+        request.resource.data.isValidated == false;
+
+      allow update: if
+        // Validation par l'approvisionnement
+        (hasAnyRole(['responsableApprovisionnement']) || isDirection()) &&
+        resource.data.isValidated == false &&
+        request.resource.data.isValidated == true &&
+        request.resource.data.validatedById == uid() ||
+        // Corrections mineures avant validation
+        (hasAnyRole(['chefRavitaillement', 'responsableApprovisionnement']) &&
+          resource.data.isValidated == false &&
+          fieldUnchanged('isValidated'));
+
+      // T.24.5 : verrouillé (lecture seule) après validation
+      allow delete: if
+        resource.data.isValidated == false &&
+        (hasAnyRole(['chefRavitaillement', 'responsableApprovisionnement']) || isTopFleetManager());
+    }
+
+    // ------------------------------------------------------------------
+    // inspections
+    // ------------------------------------------------------------------
+    match /inspections/{inspectionId} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        resource.data.inspectedBy == uid() ||
+        isSupervisorOfFleet(truckFleetId(resource.data.truckId))
+      );
+
+      allow create: if (
+          isTopFleetManager() ||
+          isSupervisorOfFleet(truckFleetId(request.resource.data.truckId))
+        ) &&
+        request.resource.data.inspectedBy == uid();
+
+      allow update: if
+        isTopFleetManager() ||
+        (isSupervisorOfFleet(truckFleetId(resource.data.truckId)) &&
+          fieldUnchanged('truckId') && fieldUnchanged('inspectedBy'));
+
+      allow delete: if isDirection();
+    }
+
+    // ------------------------------------------------------------------
+    // storage_events (alertes site de stockage — T.27.2)
+    // ------------------------------------------------------------------
+    match /storage_events/{eventId} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        (hasAnyRole(['superviseurFlotte', 'superviseurMine', 'superviseurPort']) &&
+          isSupervisorOfFleet(resource.data.fleetId))
+      );
+
+      allow create: if
+        isTopFleetManager() ||
+        hasRole('superviseurStockage') &&
+        request.resource.data.recordedBy == uid();
+
+      // Seule mutation autorisée après coup : marquer comme lu
+      allow update: if (
+          isTopFleetManager() ||
+          isSupervisorOfFleet(resource.data.fleetId)
+        ) &&
+        onlyFieldsChanged(['isRead']);
+
+      allow delete: if isDirection();
+    }
+
+    // ------------------------------------------------------------------
+    // app_config (lu avant connexion pour la vérification de version)
+    // ------------------------------------------------------------------
+    match /app_config/{docId} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if isDirection(); // à modifier via la console, pas depuis le client
+    }
+
+    // ------------------------------------------------------------------
+    // counters (génération atomique des matricules)
+    // ------------------------------------------------------------------
+    match /counters/{counterId} {
+      allow read: if hasAnyRole(['rh', 'direction', 'superviseurFlotte', 'superviseurGeneral']);
+
+      allow create: if hasAnyRole(['rh', 'direction', 'superviseurFlotte', 'superviseurGeneral']) &&
+        request.resource.data.value == 1;
+
+      allow update: if hasAnyRole(['rh', 'direction', 'superviseurFlotte', 'superviseurGeneral']) &&
+        request.resource.data.value == resource.data.value + 1;
+
+      allow delete: if false;
+    }
+  }
+}

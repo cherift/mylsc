@@ -1,0 +1,101 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function userDoc() {
+      return firestore.get(/databases/(default)/documents/users/$(uid())).data;
+    }
+
+    function userExists() {
+      return isSignedIn() &&
+        firestore.exists(/databases/(default)/documents/users/$(uid()));
+    }
+
+    function isActiveUser() {
+      return userExists() && userDoc().isActive == true;
+    }
+
+    function hasRole(r) {
+      return isActiveUser() && userDoc().role == r;
+    }
+
+    function hasAnyRole(roles) {
+      return isActiveUser() && userDoc().role in roles;
+    }
+
+    function myFleetId() {
+      return userDoc().fleetId;
+    }
+
+    function isTopFleetManager() {
+      return hasAnyRole(['direction', 'superviseurGeneral']);
+    }
+
+    function truckFleetId(truckId) {
+      return firestore.get(/databases/(default)/documents/trucks/$(truckId)).data.fleetId;
+    }
+
+    function isValidImage() {
+      return request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Photos de profil utilisateurs et chauffeurs
+    match /users/{userId}/{fileName} {
+      allow read: if isSignedIn() && (
+        uid() == userId || isTopFleetManager() ||
+        hasAnyRole(['rh']) ||
+        hasRole('superviseurFlotte')
+      );
+      allow write: if isSignedIn() && (uid() == userId || isTopFleetManager() || hasAnyRole(['rh']))
+        && isValidImage();
+    }
+
+    // Photos d'inspection véhicules — visibles/gérables par la flotte concernée
+    match /inspections/{truckId}/{fileName} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasAnyRole(['centreTechnique', 'responsableOperations']) ||
+        (hasRole('superviseurFlotte') && truckFleetId(truckId) == myFleetId())
+      );
+      allow write: if (
+          isTopFleetManager() ||
+          (hasRole('superviseurFlotte') && truckFleetId(truckId) == myFleetId())
+        ) && isValidImage();
+    }
+
+    // Photos de pesée
+    match /weighings/{truckId}/{fileName} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasAnyRole(['superviseurMine', 'superviseurPort', 'superviseurStockage', 'responsableOperations']) ||
+        (hasRole('superviseurFlotte') && truckFleetId(truckId) == myFleetId())
+      );
+      allow write: if hasAnyRole(['superviseurMine', 'superviseurPort', 'superviseurStockage'])
+        && isValidImage() || isTopFleetManager() && isValidImage();
+    }
+
+    // Photos carburant (bon de commande / reçu)
+    match /fuel/{requestId}/{fileName} {
+      allow read: if isActiveUser() && (
+        isTopFleetManager() ||
+        hasAnyRole(['pompiste', 'chefRavitaillement', 'responsableApprovisionnement', 'responsableOperations', 'superviseurFlotte'])
+      );
+      allow write: if hasAnyRole(['pompiste', 'chefRavitaillement']) && isValidImage()
+        || isTopFleetManager() && isValidImage();
+    }
+
+    // Tout le reste : refusé par défaut
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

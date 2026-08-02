@@ -1,0 +1,13 @@
+[
+  {
+    "origin": [
+      "https://my-lsc.com",
+      "https://www.my-lsc.com",
+      "https://soguifleet-manager.web.app",
+      "https://soguifleet-manager.firebaseapp.com"
+    ],
+    "method": ["GET", "HEAD"],
+    "maxAgeSeconds": 3600,
+    "responseHeader": ["Content-Type", "Content-Length", "Content-Disposition"]
+  }
+]
