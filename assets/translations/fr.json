@@ -1301,5 +1301,37 @@
     "code": "Code (optionnel)",
     "description": "Description (optionnelle)",
     "noClients": "Aucun client enregistré"
+  },
+  "fuelStock": {
+    "availableHint": "Disponible à la demande : {available} (stock − {reserved} déjà réservés par des demandes en attente)",
+    "exceedsAvailable": "Quantité supérieure au stock disponible ({available})",
+    "insufficientForRequest": "Stock insuffisant : {requested} demandés, seulement {available} disponibles (stock − demandes en attente). Réduisez la quantité demandée.",
+    "insufficientForServing": "Stock en cuve insuffisant : {requested} à servir, seulement {available} en stock. Un ravitaillement est nécessaire.",
+    "inTank": "Stock en cuve : {available}"
+  },
+  "fuelLedger": {
+    "tab": "Historique stock",
+    "title": "Relevé du stock carburant",
+    "empty": "Aucun mouvement sur la période",
+    "filterAll": "Tous",
+    "filterCredits": "Entrées",
+    "filterDebits": "Sorties",
+    "openingBalance": "Solde initial",
+    "closingBalance": "Solde final",
+    "totalCredits": "Entrées",
+    "totalDebits": "Sorties",
+    "supply": "Ravitaillement",
+    "dispense": "Service",
+    "invoice": "Facture",
+    "receipt": "Reçu",
+    "balance": "Solde",
+    "colDate": "Date",
+    "colType": "Type",
+    "colLabel": "Libellé",
+    "colReference": "Référence",
+    "colOperator": "Opérateur",
+    "colCredit": "Entrée (L)",
+    "colDebit": "Sortie (L)",
+    "colBalance": "Solde (L)"
   }
 }

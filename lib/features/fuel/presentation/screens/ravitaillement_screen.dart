@@ -17,11 +17,13 @@ import '../../../../core/widgets/inline_error_retry.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/models/fuel_supply_entry_model.dart';
 import '../providers/fuel_supply_providers.dart';
+import '../widgets/fuel_ledger_tab.dart';
 import 'direction_fuel_report_screen.dart';
 
-/// Écran principal Ravitaillement, 2 onglets :
+/// Écran principal Ravitaillement, 3 onglets :
 /// 0 – Ravitaillement : saisie + liste des livraisons de carburant au stock
-/// 1 – Rapport Global : rapport de consommation multi-flottes
+/// 1 – Historique stock : relevé des entrées (+) / sorties (−) avec solde
+/// 2 – Rapport Global : rapport de consommation multi-flottes
 class RavitaillementScreen extends ConsumerStatefulWidget {
   const RavitaillementScreen({super.key});
 
@@ -41,7 +43,7 @@ class _RavitaillementScreenState extends ConsumerState<RavitaillementScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -88,6 +90,7 @@ class _RavitaillementScreenState extends ConsumerState<RavitaillementScreen>
                 dividerColor: Colors.transparent,
                 tabs: [
                   Tab(text: l10n.translate('ravitaillement.tabSupply')),
+                  Tab(text: l10n.translate('fuelLedger.tab')),
                   Tab(text: l10n.translate('ravitaillement.tabReport')),
                 ],
               ),
@@ -106,6 +109,8 @@ class _RavitaillementScreenState extends ConsumerState<RavitaillementScreen>
               _endDate = e;
             }),
           ),
+          // Relevé du stock (entrées + / sorties −)
+          const FuelLedgerTab(),
           const DirectionFuelReportScreen(),
         ],
       ),

@@ -1,7 +1,9 @@
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../domain/fuel_stock.dart';
 import '../../domain/models/fuel_request_model.dart';
+import '../../domain/models/fuel_supply_entry_model.dart';
 
 /// Repository pour la gestion des demandes de carburant
 class FuelRequestRepository {
@@ -14,9 +16,40 @@ class FuelRequestRepository {
   CollectionReference<Map<String, dynamic>> get _requestCollection =>
       _firestore.collection('fuel_requests');
 
+  // ── Stock ──
+
+  /// Stock carburant calculé à partir des données à jour (lecture fraîche,
+  /// pas de cache) — utilisé pour les contrôles bloquants.
+  Future<FuelStockSummary> computeStock() async {
+    final supplies = await _firestore.collection('fuel_supply_entries').get();
+    final requests = await _requestCollection.get();
+    return FuelStockSummary.compute(
+      supplies.docs
+          .map((d) => FuelSupplyEntryModel.fromMap(d.data(), d.id))
+          .toList(),
+      requests.docs
+          .map((d) => FuelRequestModel.fromMap(d.data(), d.id))
+          .toList(),
+    );
+  }
+
+  /// Contrôle bloquant au service (pompiste) : le stock physique doit
+  /// couvrir le litrage servi. À appeler AVANT toute écriture.
+  Future<void> ensureStockCoversServing(double liters) async {
+    final stock = await computeStock();
+    if (liters > stock.available + 0.001) {
+      throw InsufficientFuelStockException(
+        requested: liters,
+        available: stock.available < 0 ? 0 : stock.available,
+      );
+    }
+  }
+
   // ── Création ──
 
-  /// Créer une demande de carburant
+  /// Créer une demande de carburant.
+  /// Bloquée si le litrage demandé dépasse le stock encore disponible
+  /// (stock − demandes en attente) — lance [InsufficientFuelStockException].
   Future<FuelRequestModel> createRequest({
     required String truckId,
     required String truckImmatriculation,
@@ -30,6 +63,15 @@ class FuelRequestRepository {
     String? fleetId,
     String? shiftId,
   }) async {
+    final stock = await computeStock();
+    if (requestedLiters > stock.availableForRequest + 0.001) {
+      final available = stock.availableForRequest;
+      throw InsufficientFuelStockException(
+        requested: requestedLiters,
+        available: available < 0 ? 0 : available,
+      );
+    }
+
     final code = (Random().nextInt(900000) + 100000).toString();
     final request = FuelRequestModel(
       id: '',

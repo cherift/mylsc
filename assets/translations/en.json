@@ -1260,5 +1260,37 @@
     "code": "Code (optional)",
     "description": "Description (optional)",
     "noClients": "No clients registered"
+  },
+  "fuelStock": {
+    "availableHint": "Available to request: {available} (stock − {reserved} already reserved by pending requests)",
+    "exceedsAvailable": "Quantity exceeds available stock ({available})",
+    "insufficientForRequest": "Insufficient stock: {requested} requested, only {available} available (stock − pending requests). Reduce the requested quantity.",
+    "insufficientForServing": "Insufficient fuel in tank: {requested} to serve, only {available} in stock. A resupply is needed.",
+    "inTank": "Fuel in tank: {available}"
+  },
+  "fuelLedger": {
+    "tab": "Stock history",
+    "title": "Fuel stock statement",
+    "empty": "No movements in this period",
+    "filterAll": "All",
+    "filterCredits": "In",
+    "filterDebits": "Out",
+    "openingBalance": "Opening balance",
+    "closingBalance": "Closing balance",
+    "totalCredits": "In",
+    "totalDebits": "Out",
+    "supply": "Resupply",
+    "dispense": "Dispensed",
+    "invoice": "Invoice",
+    "receipt": "Receipt",
+    "balance": "Balance",
+    "colDate": "Date",
+    "colType": "Type",
+    "colLabel": "Description",
+    "colReference": "Reference",
+    "colOperator": "Operator",
+    "colCredit": "In (L)",
+    "colDebit": "Out (L)",
+    "colBalance": "Balance (L)"
   }
 }

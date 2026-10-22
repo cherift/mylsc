@@ -1259,5 +1259,37 @@
     "code": "代码（可选）",
     "description": "描述（可选）",
     "noClients": "暂无客户"
+  },
+  "fuelStock": {
+    "availableHint": "可申请量：{available}（库存 − 待处理申请已预留 {reserved}）",
+    "exceedsAvailable": "数量超过可用库存（{available}）",
+    "insufficientForRequest": "库存不足：申请 {requested}，仅有 {available} 可用（库存 − 待处理申请）。请减少申请数量。",
+    "insufficientForServing": "油罐库存不足：需加注 {requested}，库存仅 {available}。需要补给。",
+    "inTank": "油罐库存：{available}"
+  },
+  "fuelLedger": {
+    "tab": "库存历史",
+    "title": "燃油库存流水",
+    "empty": "该期间无流水",
+    "filterAll": "全部",
+    "filterCredits": "入库",
+    "filterDebits": "出库",
+    "openingBalance": "期初余额",
+    "closingBalance": "期末余额",
+    "totalCredits": "入库",
+    "totalDebits": "出库",
+    "supply": "补给",
+    "dispense": "加注",
+    "invoice": "发票",
+    "receipt": "收据",
+    "balance": "余额",
+    "colDate": "日期",
+    "colType": "类型",
+    "colLabel": "摘要",
+    "colReference": "单号",
+    "colOperator": "操作人",
+    "colCredit": "入库 (L)",
+    "colDebit": "出库 (L)",
+    "colBalance": "余额 (L)"
   }
 }

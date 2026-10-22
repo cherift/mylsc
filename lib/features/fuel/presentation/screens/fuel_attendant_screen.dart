@@ -11,6 +11,8 @@ import '../../../settings/presentation/screens/settings_screen.dart';
 import '../../domain/models/fuel_request_model.dart';
 import '../providers/fuel_providers.dart';
 import '../providers/fuel_request_providers.dart';
+import '../providers/fuel_supply_providers.dart';
+import '../widgets/fuel_stock_hint.dart';
 import '../widgets/fuel_request_detail_sheet.dart';
 
 /// Écran simplifié pour le pompiste - Interface ultra-simple
@@ -269,6 +271,8 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
         requestId: _validatedRequest!.id,
         servedLiters: liters,
       );
+      // Le stock en cuve doit couvrir le litrage servi
+      await requestRepo.ensureStockCoversServing(liters);
 
       final repository = ref.read(fuelRepositoryProvider);
       final entry = await repository.addFuelEntry(
@@ -298,6 +302,10 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
       if (mounted) {
         _showSuccessDialog(isAutoValidated: true);
       }
+    } on InsufficientFuelStockException catch (e) {
+      setState(() {
+        _errorMessage = fuelStockErrorMessage(l10n, e, serving: true);
+      });
     } catch (e) {
       setState(() {
         _errorMessage = e.toString().contains('quantity_mismatch')
@@ -798,6 +806,8 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
             ],
           ),
         ),
+        const SizedBox(height: AppSpacing.sm),
+        _buildStockInTankInfo(l10n),
         const SizedBox(height: AppSpacing.xl),
         // Saisie des litres
         _buildTextField(
@@ -1279,6 +1289,34 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
         ],
       ),
     ),
+    );
+  }
+
+  /// Stock physique en cuve (ravitaillements − pleins servis)
+  Widget _buildStockInTankInfo(AppLocalizations l10n) {
+    final stock = ref.watch(fuelStockProvider).valueOrNull;
+    if (stock == null) return const SizedBox.shrink();
+    final available = stock.available < 0 ? 0.0 : stock.available;
+    final insufficient = _validatedRequest != null &&
+        _validatedRequest!.requestedLiters > available + 0.001;
+    final color = insufficient ? AppColors.error : AppColors.textSecondary;
+    return Row(
+      children: [
+        Icon(Iconsax.gas_station, size: 16, color: color),
+        const SizedBox(width: AppSpacing.xs),
+        Expanded(
+          child: Text(
+            l10n
+                .translate('fuelStock.inTank')
+                .replaceAll('{available}', formatLiters(available)),
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: insufficient ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

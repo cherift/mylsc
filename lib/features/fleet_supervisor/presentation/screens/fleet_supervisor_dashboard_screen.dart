@@ -37,6 +37,8 @@ import '../../../trucks/domain/models/truck_model.dart';
 import '../../../trucks/presentation/providers/truck_providers.dart';
 import '../../../dashboard/domain/models/dashboard_filter.dart';
 import '../../../../core/widgets/dashboard_filter_modal.dart';
+import '../../../fuel/presentation/widgets/fuel_stock_hint.dart';
+import '../../../fuel/domain/fuel_stock.dart';
 import '../../../weighing/presentation/providers/weighing_providers.dart';
 
 /// Dashboard du superviseur de flotte - intégré dans le dashboard principal
@@ -4042,7 +4044,8 @@ class _CreateFuelRequestDialogState
           .getActiveShiftForTruck(_selectedTruckId!);
 
       final repo = FuelRequestRepository();
-      final liters = double.tryParse(_litersController.text.trim()) ?? 0;
+      final liters = double.tryParse(
+          _litersController.text.trim().replaceAll(',', '.')) ?? 0;
       final request = await repo.createRequest(
         truckId: _selectedTruckId!,
         truckImmatriculation: _selectedTruckImmatriculation ?? '',
@@ -4097,6 +4100,14 @@ class _CreateFuelRequestDialogState
             ],
           ),
         );
+      }
+    } on InsufficientFuelStockException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: AppColors.error,
+          content: Text(
+              fuelStockErrorMessage(AppLocalizations.of(context), e)),
+        ));
       }
     } catch (e) {
       if (mounted) {
@@ -4183,13 +4194,17 @@ class _CreateFuelRequestDialogState
                 if (value == null || value.trim().isEmpty) {
                   return l10n.translate('fleet.litersRequired');
                 }
-                final liters = double.tryParse(value.trim());
+                final liters =
+                    double.tryParse(value.trim().replaceAll(',', '.'));
                 if (liters == null || liters <= 0) {
                   return l10n.translate('fuelRequest.litersInvalid');
                 }
-                return null;
+                // Pas plus que le stock disponible (stock − demandes en attente)
+                return validateRequestedAgainstStock(
+                    l10n, liters, availableForRequest(ref));
               },
             ),
+            const FuelStockHint(),
             const SizedBox(height: 16),
             TextFormField(
               controller: _reasonController,
