@@ -113,6 +113,9 @@ class RoleDefinition {
           Permission.deleteUsers,
           Permission.managePermissions,
           Permission.viewAuditLogs,
+          Permission.manageClients,
+          Permission.editWeighings,
+          Permission.deleteVehicles,
         };
 
       case UserRole.superviseurFlotte:

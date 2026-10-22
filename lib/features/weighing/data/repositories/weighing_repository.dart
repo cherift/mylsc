@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../domain/models/weighing_edit_model.dart';
 import '../../domain/models/weighing_record_model.dart';
 
 /// Repository pour la gestion des pesées
@@ -32,6 +33,8 @@ class WeighingRepository {
     List<String>? photoUrls,
     String? weighedByMatricule,
     String? driverMatricule,
+    String? clientId,
+    String? clientName,
   }) async {
     final record = WeighingRecordModel(
       id: '',
@@ -54,6 +57,8 @@ class WeighingRepository {
       photoUrls: photoUrls,
       weighedByMatricule: weighedByMatricule,
       driverMatricule: driverMatricule,
+      clientId: clientId,
+      clientName: clientName,
     );
 
     final docRef = await _collection.add(record.toMap());
@@ -74,6 +79,8 @@ class WeighingRepository {
     String? driverName,
     String? shiftId,
     String? weighedByMatricule,
+    String? clientId,
+    String? clientName,
   }) async {
     final isMine = location == WeighingLocation.mine;
     final record = WeighingRecordModel(
@@ -94,6 +101,8 @@ class WeighingRepository {
       status: WeighingStatus.pending,
       createdAt: DateTime.now(),
       weighedByMatricule: weighedByMatricule,
+      clientId: clientId,
+      clientName: clientName,
     );
     final docRef = await _collection.add(record.toMap());
     return record.copyWith(id: docRef.id);
@@ -108,6 +117,8 @@ class WeighingRepository {
     required String exitTicketNumber,
     String? notes,
     List<String>? photoUrls,
+    String? clientId,
+    String? clientName,
   }) async {
     final doc = await _collection.doc(recordId).get();
     if (!doc.exists) throw Exception('Record not found');
@@ -133,8 +144,103 @@ class WeighingRepository {
     };
     if (notes != null && notes.isNotEmpty) updates['notes'] = notes;
     if (photoUrls != null) updates['photoUrls'] = photoUrls;
+    // Le client saisi à l'entrée est conservé ; ne compléter que s'il manque
+    if (existing.clientId == null && clientId != null) {
+      updates['clientId'] = clientId;
+      updates['clientName'] = clientName;
+    }
 
     await _collection.doc(recordId).update(updates);
+  }
+
+  // ── Correction (T.38) ──
+
+  /// Corrige une pesée et trace l'opération dans `weighings/{id}/edits`.
+  /// Seuls les champs réellement modifiés sont enregistrés ; le poids net
+  /// est recalculé si les deux pesées sont connues.
+  /// Retourne false si aucun champ n'a changé.
+  Future<bool> correctRecord({
+    required WeighingRecordModel original,
+    required String editedBy,
+    required String editedByName,
+    required String reason,
+    double? emptyWeight,
+    double? loadedWeight,
+    String? ticketNumber,
+    String? clientId,
+    String? clientName,
+    String? notes,
+  }) async {
+    final changes = <String, ({Object? old, Object? value})>{};
+    final updates = <String, dynamic>{};
+
+    void track(String field, Object? oldValue, Object? newValue) {
+      if (newValue == null || newValue == oldValue) return;
+      changes[field] = (old: oldValue, value: newValue);
+      updates[field] = newValue;
+    }
+
+    track('emptyWeight', original.emptyWeight, emptyWeight);
+    track('loadedWeight', original.loadedWeight, loadedWeight);
+    track('ticketNumber', original.ticketNumber, ticketNumber?.trim());
+    track('clientId', original.clientId, clientId);
+    if (updates.containsKey('clientId')) {
+      updates['clientName'] = clientName;
+      changes['clientName'] = (old: original.clientName, value: clientName);
+    }
+    track('notes', original.notes ?? '', notes?.trim());
+
+    if (changes.isEmpty) return false;
+
+    // Recalcul du poids net si les deux pesées sont connues
+    final newEmpty = emptyWeight ?? original.emptyWeight;
+    final newLoaded = loadedWeight ?? original.loadedWeight;
+    if (newEmpty != null && newLoaded != null) {
+      final newNet = newLoaded - newEmpty;
+      if (newNet != original.weight) {
+        updates['weight'] = newNet;
+        changes['weight'] = (old: original.weight, value: newNet);
+      }
+    }
+
+    final now = DateTime.now();
+    updates['lastEditedBy'] = editedBy;
+    updates['lastEditedByName'] = editedByName;
+    updates['lastEditedAt'] = Timestamp.fromDate(now);
+
+    final docRef = _collection.doc(original.id);
+    final edit = WeighingEditModel(
+      id: '',
+      editedBy: editedBy,
+      editedByName: editedByName,
+      editedAt: now,
+      reason: reason.trim(),
+      changes: changes,
+    );
+
+    final batch = _firestore.batch()
+      ..update(docRef, updates)
+      ..set(docRef.collection('edits').doc(), edit.toMap());
+    await batch.commit();
+    return true;
+  }
+
+  /// Suivi en temps réel d'une pesée
+  Stream<WeighingRecordModel?> watchRecord(String recordId) {
+    return _collection.doc(recordId).snapshots().map((doc) =>
+        doc.exists ? WeighingRecordModel.fromMap(doc.data()!, doc.id) : null);
+  }
+
+  /// Historique des corrections d'une pesée (plus récente d'abord)
+  Stream<List<WeighingEditModel>> watchEdits(String recordId) {
+    return _collection
+        .doc(recordId)
+        .collection('edits')
+        .orderBy('editedAt', descending: true)
+        .snapshots()
+        .map((s) => s.docs
+            .map((d) => WeighingEditModel.fromMap(d.data(), d.id))
+            .toList());
   }
 
   // ── Événements Stockage ──

@@ -129,6 +129,10 @@ class FuelRequestModel {
   final String requestedBy;
   final String requestedByName;
   final double requestedLiters;
+
+  /// Quantité servie conforme à la quantité demandée (T.36), au centilitre près
+  static bool quantitiesMatch(double requested, double served) =>
+      (requested * 100).round() == (served * 100).round();
   final String? reason;
   final FuelRequestStatus status;
   final DateTime createdAt;

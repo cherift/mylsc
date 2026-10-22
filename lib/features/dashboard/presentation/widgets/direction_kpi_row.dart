@@ -12,6 +12,7 @@ import '../../../breakdown/domain/models/breakdown_report_model.dart';
 import '../../../breakdown/presentation/providers/breakdown_providers.dart';
 import '../../../fleet/presentation/providers/fleet_providers.dart';
 import '../../../chauffeur/presentation/providers/driver_providers.dart';
+import '../../../clients/presentation/providers/client_providers.dart';
 import '../../domain/models/dashboard_filter.dart';
 import 'dashboard_stat_card.dart';
 import 'kpi_detail_dialog.dart';
@@ -56,15 +57,33 @@ class DirectionKpiRow extends ConsumerWidget {
         .where((s) => truckIds.contains(s.truckId))
         .toList();
 
-    // 4. Application du filtre date + véhicule sur les pesées
+    // 4. Application du filtre date + véhicule + client sur les pesées
     final mineWeighings = allMineWeighings.where((w) {
       if (!truckIds.contains(w.truckId)) return false;
+      if (!(filter?.matchesClient(w.clientId) ?? true)) return false;
       return filter?.matchesDate(w.createdAt) ?? true;
     }).toList();
     final portWeighings = allPortWeighings.where((w) {
       if (!truckIds.contains(w.truckId)) return false;
+      if (!(filter?.matchesClient(w.clientId) ?? true)) return false;
       return filter?.matchesDate(w.createdAt) ?? true;
     }).toList();
+
+    // Filtres du dashboard reportés dans l'en-tête des exports (T.23 / T.37)
+    final clients = ref.watch(activeClientsProvider).valueOrNull ?? [];
+    final exportFilters = <String, String>{
+      if (filter?.selectedTruckIds != null)
+        l10n.translate('common.exportVehicles'):
+            trucks.map((t) => t.immatriculation).join(', '),
+      if (filter?.selectedClientIds != null)
+        l10n.translate('weighing.client'): [
+          ...clients
+              .where((c) => filter!.selectedClientIds!.contains(c.id))
+              .map((c) => c.name),
+          if (filter!.selectedClientIds!.contains(DashboardFilter.noClientId))
+            l10n.translate('weighing.noClient'),
+        ].join(', '),
+    };
 
     final breakdowns = allBreakdowns
         .where((b) => truckIds.contains(b.truckId))
@@ -143,7 +162,11 @@ class DirectionKpiRow extends ConsumerWidget {
               color: AppColors.info,
               dateTime: w.createdAt,
               truckImmatriculation: w.truckImmatriculation,
+              numericValue: w.weight,
+              clientName: w.clientName,
               extraData: {
+                l10n.translate('weighing.client'):
+                    w.clientName ?? l10n.translate('weighing.noClient'),
                 l10n.translate('trucks.fields.immatriculation'):
                     w.truckImmatriculation,
                 l10n.translate('users.roles.driver'): w.driverName ?? '',
@@ -170,7 +193,11 @@ class DirectionKpiRow extends ConsumerWidget {
               color: AppColors.accent,
               dateTime: w.createdAt,
               truckImmatriculation: w.truckImmatriculation,
+              numericValue: w.weight,
+              clientName: w.clientName,
               extraData: {
+                l10n.translate('weighing.client'):
+                    w.clientName ?? l10n.translate('weighing.noClient'),
                 l10n.translate('trucks.fields.immatriculation'):
                     w.truckImmatriculation,
                 l10n.translate('users.roles.driver'): w.driverName ?? '',
@@ -284,6 +311,8 @@ class DirectionKpiRow extends ConsumerWidget {
                     color: AppColors.info,
                     items: mineItems,
                     xmlRootName: 'tonnage_mine',
+                    isWeighing: true,
+                    exportFilters: exportFilters,
                   ),
                 ),
               ),
@@ -303,6 +332,8 @@ class DirectionKpiRow extends ConsumerWidget {
                     color: AppColors.accent,
                     items: portItems,
                     xmlRootName: 'tonnage_port',
+                    isWeighing: true,
+                    exportFilters: exportFilters,
                   ),
                 ),
               ),
@@ -410,6 +441,8 @@ class DirectionKpiRow extends ConsumerWidget {
                   color: AppColors.info,
                   items: mineItems,
                   xmlRootName: 'tonnage_mine',
+                  isWeighing: true,
+                  exportFilters: exportFilters,
                 ),
               ),
             ),
@@ -429,6 +462,8 @@ class DirectionKpiRow extends ConsumerWidget {
                   color: AppColors.accent,
                   items: portItems,
                   xmlRootName: 'tonnage_port',
+                  isWeighing: true,
+                  exportFilters: exportFilters,
                 ),
               ),
             ),
@@ -488,7 +523,10 @@ class DirectionKpiRow extends ConsumerWidget {
     required Color color,
     required List<KpiDetailItem> items,
     required String xmlRootName,
+    bool isWeighing = false,
+    Map<String, String> exportFilters = const {},
   }) {
+    final l10n = AppLocalizations.of(context);
     showDialog<void>(
       context: context,
       builder: (_) => KpiDetailDialog(
@@ -497,6 +535,14 @@ class DirectionKpiRow extends ConsumerWidget {
         color: color,
         items: items,
         xmlRootName: xmlRootName,
+        initialDateRange: filter?.dateRange,
+        exportFilters: exportFilters,
+        // Cumul des pesées (nombre + tonnage) et filtre client — T.37
+        totalUnit: isWeighing ? 'T' : null,
+        countLabel: isWeighing ? l10n.translate('weighing.totalCount') : null,
+        totalLabel:
+            isWeighing ? l10n.translate('weighing.totalTonnage') : null,
+        enableClientFilter: isWeighing,
       ),
     );
   }

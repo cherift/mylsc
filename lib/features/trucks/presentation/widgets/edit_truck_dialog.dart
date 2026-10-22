@@ -44,6 +44,7 @@ class _EditTruckDialogState extends ConsumerState<EditTruckDialog> {
   late final TextEditingController _numeroMoteurController;
   late final TextEditingController _normeMoteurController;
   late final TextEditingController _radarNumberController;
+  late final TextEditingController _poidsAVideController;
   late final TextEditingController _puissanceCVController;
   late final TextEditingController _capaciteReservoirController;
   late final TextEditingController _siteAffectationController;
@@ -87,6 +88,8 @@ class _EditTruckDialogState extends ConsumerState<EditTruckDialog> {
     _numeroMoteurController = TextEditingController(text: truck.numeroMoteur ?? '');
     _normeMoteurController = TextEditingController(text: truck.normeMoteur ?? '');
     _radarNumberController = TextEditingController(text: truck.radarNumber ?? '');
+    _poidsAVideController = TextEditingController(
+        text: TruckModel.formatPoidsAVideInput(truck.poidsAVide));
     _puissanceCVController = TextEditingController(text: truck.puissanceCV?.toString() ?? '');
     _capaciteReservoirController = TextEditingController(text: truck.capaciteReservoir?.toString() ?? '');
     _siteAffectationController = TextEditingController(text: truck.siteAffectation ?? '');
@@ -123,6 +126,7 @@ class _EditTruckDialogState extends ConsumerState<EditTruckDialog> {
     _numeroMoteurController.dispose();
     _normeMoteurController.dispose();
     _radarNumberController.dispose();
+    _poidsAVideController.dispose();
     _puissanceCVController.dispose();
     _capaciteReservoirController.dispose();
     _siteAffectationController.dispose();
@@ -194,6 +198,7 @@ class _EditTruckDialogState extends ConsumerState<EditTruckDialog> {
         radarNumber: _radarNumberController.text.isEmpty
             ? null
             : _radarNumberController.text,
+        poidsAVide: TruckModel.parsePoidsAVide(_poidsAVideController.text),
         puissanceCV: _puissanceCVController.text.isEmpty
             ? null
             : int.parse(_puissanceCVController.text),
@@ -656,6 +661,22 @@ class _EditTruckDialogState extends ConsumerState<EditTruckDialog> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          // Poids à vide (kg) — utilisé pour pré-remplir la pesée à vide (T.35)
+          _buildTextField(
+            controller: _poidsAVideController,
+            label: l10n.translate('trucks.fields.poidsAVide'),
+            hint: l10n.translate('trucks.placeholders.poidsAVide'),
+            icon: Iconsax.weight,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp('[0-9.,]')),
+            ],
+            validator: (value) => TruckModel.validatePoidsAVide(
+              value,
+              l10n.translate('trucks.createTruck.validation.poidsAVideInvalid'),
+            ),
           ),
         ],
       ),

@@ -45,6 +45,10 @@ class TruckFieldValueExtractor {
         return truck.capaciteReservoir != null
             ? '${truck.capaciteReservoir} L'
             : '-';
+      case 'poidsAVide':
+        return truck.poidsAVide != null
+            ? '${TruckModel.formatPoidsAVideInput(truck.poidsAVide)} kg'
+            : '-';
       case 'ptac':
         return truck.ptac != null ? '${truck.ptac} kg' : '-';
       case 'chargeUtileMax':

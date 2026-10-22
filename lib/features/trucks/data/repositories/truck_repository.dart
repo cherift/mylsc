@@ -26,8 +26,10 @@ class TruckRepository {
           .orderBy('createdAt', descending: true)
           .get();
 
+      // Véhicules supprimés exclus (T.40)
       return snapshot.docs
           .map((doc) => TruckModel.fromMap(doc.data(), doc.id))
+          .where((truck) => truck.isActive)
           .toList();
     } catch (e) {
       throw Exception('Erreur lors de la récupération des camions: $e');
@@ -136,6 +138,54 @@ class TruckRepository {
   }
 
   /// Supprimer définitivement un camion (à utiliser avec précaution)
+  /// Raison bloquant la suppression d'un véhicule (T.40), null si aucune.
+  /// - `active_shift` : vacation en cours sur le camion
+  /// - `pending_fuel_request` : demande de carburant en attente
+  Future<String?> checkDeletionBlockers(String truckId) async {
+    final activeShift = await _firestore
+        .collection('shifts')
+        .where('truckId', isEqualTo: truckId)
+        .where('status', isEqualTo: 'active')
+        .limit(1)
+        .get();
+    if (activeShift.docs.isNotEmpty) return 'active_shift';
+
+    final pendingFuel = await _firestore
+        .collection('fuel_requests')
+        .where('truckId', isEqualTo: truckId)
+        .where('status', isEqualTo: 'pending')
+        .limit(1)
+        .get();
+    if (pendingFuel.docs.isNotEmpty) return 'pending_fuel_request';
+
+    return null;
+  }
+
+  /// Supprimer un véhicule (T.40) : désactivation logique, retrait de sa
+  /// flotte et fin des affectations chauffeur actives (les chauffeurs
+  /// redeviennent affectables — T.19.1). L'historique est conservé.
+  Future<void> softDeleteTruck(String truckId, {String? deletedBy}) async {
+    final assignments = await _firestore
+        .collection('driver_assignments')
+        .where('truckId', isEqualTo: truckId)
+        .where('isActive', isEqualTo: true)
+        .get();
+
+    final batch = _firestore.batch()
+      ..update(_firestore.collection(_collection).doc(truckId), {
+        'isActive': false,
+        'isDeleted': true,
+        'fleetId': null,
+        'deletedAt': Timestamp.now(),
+        'deletedBy': deletedBy,
+      });
+    for (final doc in assignments.docs) {
+      batch.update(doc.reference, {'isActive': false});
+    }
+    await batch.commit();
+  }
+
+  /// Suppression définitive (non utilisée : préférer [softDeleteTruck])
   Future<void> deleteTruck(String truckId) async {
     try {
       await _firestore.collection(_collection).doc(truckId).delete();
@@ -246,7 +296,11 @@ class TruckRepository {
   /// Compter tous les camions
   Future<int> getTruckCount() async {
     try {
-      final snapshot = await _firestore.collection(_collection).get();
+      // Véhicules supprimés exclus (T.40)
+      final snapshot = await _firestore
+          .collection(_collection)
+          .where('isActive', isEqualTo: true)
+          .get();
       return snapshot.docs.length;
     } catch (e) {
       throw Exception('Erreur lors du comptage des camions: $e');
@@ -317,6 +371,9 @@ class TruckRepository {
   // =============== REAL-TIME MONITORING ===============
 
   /// Écouter tous les camions en temps réel
+  /// Tous les camions en service dans l'application.
+  /// Les véhicules supprimés (isActive = false — T.40) sont exclus de
+  /// toutes les listes, KPI et sélecteurs qui s'appuient sur ce flux.
   Stream<List<TruckModel>> watchAllTrucks() {
     return _firestore
         .collection(_collection)
@@ -324,6 +381,7 @@ class TruckRepository {
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => TruckModel.fromMap(doc.data(), doc.id))
+            .where((truck) => truck.isActive)
             .toList());
   }
 

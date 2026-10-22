@@ -84,7 +84,8 @@
     "filterSelectAll": "Tout sélectionner",
     "filterReset": "Réinitialiser",
     "filterApply": "Appliquer",
-    "filterNoDate": "Toutes les dates"
+    "filterNoDate": "Toutes les dates",
+    "filterClients": "Clients"
   },
   "users": {
     "management": "Gestion des utilisateurs",
@@ -177,6 +178,15 @@
       "update": "Mettre à jour",
       "success": "Utilisateur modifié avec succès",
       "error": "Erreur: {error}"
+    },
+    "delete": {
+      "button": "Supprimer",
+      "title": "Supprimer l'utilisateur",
+      "confirm": "Supprimer l'utilisateur « {name} » ?",
+      "success": "Utilisateur supprimé",
+      "consequences": "Le compte ne pourra plus se connecter et n'apparaîtra plus dans les listes. L'historique (pesées, vacations, carburant) est conservé.",
+      "blockedActiveShift": "Impossible de supprimer « {name} » : une vacation est en cours. Terminez-la d'abord.",
+      "cannotDeleteSelf": "Vous ne pouvez pas supprimer votre propre compte."
     }
   },
   "settings": {
@@ -322,7 +332,8 @@
       "validation": {
         "required": "Ce champ est obligatoire",
         "yearInvalid": "L'année doit être entre 1900 et {year}",
-        "kmInvalid": "Le kilométrage initial ne peut pas être supérieur au kilométrage actuel"
+        "kmInvalid": "Le kilométrage initial ne peut pas être supérieur au kilométrage actuel",
+        "poidsAVideInvalid": "Poids à vide invalide (entre 1 000 et 60 000 kg)"
       },
       "success": "Camion créé avec succès !",
       "error": "Erreur lors de la création du camion"
@@ -380,7 +391,8 @@
       "normeMoteur": "Norme Moteur",
       "radarNumber": "N° Radar",
       "kilometrageInitial": "Kilométrage Initial",
-      "notes": "Notes"
+      "notes": "Notes",
+      "poidsAVide": "Poids à vide (kg)"
     },
     "placeholders": {
       "immatriculation": "Ex: AB-123-CD",
@@ -407,7 +419,8 @@
       "garagePrestataire": "Ex: Garage Dupont",
       "identifiantGPS": "Ex: GPS-12345",
       "fournisseurGPS": "Ex: TomTom, Garmin...",
-      "notes": "Notes additionnelles..."
+      "notes": "Notes additionnelles...",
+      "poidsAVide": "Ex: 21500"
     },
     "configuration": {
       "config4x2": "4x2",
@@ -478,7 +491,16 @@
       "maintenanceHistory": "Historique des maintenances",
       "maintenanceHistoryDesc": "Consulter l'historique des interventions"
     },
-    "searchHint": "Rechercher par plaque ou numéro interne..."
+    "searchHint": "Rechercher par plaque ou numéro interne...",
+    "delete": {
+      "button": "Supprimer",
+      "title": "Supprimer le véhicule",
+      "confirm": "Supprimer le véhicule {truck} ?",
+      "consequences": "Il sera retiré de sa flotte et n'apparaîtra plus dans les listes ; ses affectations chauffeur seront terminées. L'historique (pesées, carburant, inspections) est conservé.",
+      "success": "Véhicule supprimé",
+      "blockedActiveShift": "Impossible de supprimer {truck} : une vacation est en cours sur ce véhicule.",
+      "blockedPendingFuel": "Impossible de supprimer {truck} : une demande de carburant est en attente. Annulez-la ou faites-la servir d'abord."
+    }
   },
   "fuel": {
     "title": "Ajouter du carburant",
@@ -548,7 +570,8 @@
     "receiptNumberRequired": "Le numéro de reçu est obligatoire",
     "photoRequired": "La photo du bon est obligatoire",
     "observation": "Observation",
-    "fulfilledAt": "Prise de carburant le"
+    "fulfilledAt": "Prise de carburant le",
+    "quantityMismatch": "La quantité servie doit être égale à la quantité demandée ({requested} L). Corrigez la quantité saisie pour confirmer le ravitaillement."
   },
   "inspection": {
     "title": "Inspection véhicule",
@@ -789,7 +812,29 @@
     "chargedBy": "Chargé par",
     "dischargedBy": "Déchargé par",
     "chargeSuccess": "Chargement validé avec succès !",
-    "dischargeSuccess": "Déchargement validé avec succès !"
+    "dischargeSuccess": "Déchargement validé avec succès !",
+    "client": "Client",
+    "selectClient": "Sélectionner le client",
+    "clientRequired": "Veuillez sélectionner le client concerné avant d'enregistrer la pesée",
+    "noClient": "Client non renseigné",
+    "filterClient": "Client",
+    "vehicleEmptyWeightPrefilled": "Valeur issue de la fiche véhicule ({weight} T) — modifiable si la balance indique une autre valeur",
+    "vehicleEmptyWeightReference": "Poids à vide de la fiche véhicule : {weight} T",
+    "vehicleEmptyWeightMissing": "Poids à vide non renseigné sur la fiche véhicule — saisissez la valeur de la balance",
+    "totalCount": "Nombre de pesées",
+    "totalTonnage": "Tonnage total",
+    "edit": {
+      "button": "Corriger",
+      "title": "Corriger la pesée",
+      "reason": "Motif de la correction",
+      "reasonHint": "Ex. : erreur de saisie du poids chargé",
+      "reasonRequired": "Le motif de la correction est obligatoire",
+      "ticketLocked": "Le n° de bon ne peut être corrigé que par un administrateur",
+      "netMustBePositive": "Le poids chargé doit être supérieur au poids à vide",
+      "noChanges": "Aucune modification à enregistrer",
+      "saved": "Pesée corrigée",
+      "lastEdited": "Modifiée le {date} par {name}"
+    }
   },
   "storage": {
     "title": "Zone Stockage",
@@ -1077,7 +1122,12 @@
     "vacationsCount": "Vacations terminées / total",
     "detailVacations": "Détail des vacations",
     "filterByTruck": "Filtrer par camion...",
-    "filterByDate": "Filtrer par période"
+    "filterByDate": "Filtrer par période",
+    "allClients": "Tous les clients",
+    "totalCount": "Nombre d'enregistrements",
+    "totalValue": "Total",
+    "totalRow": "TOTAL",
+    "exportSummary": "Export terminé — {countLabel} : {count} · {totalLabel} : {total}"
   },
   "photos": {
     "title": "Photos",
@@ -1237,5 +1287,19 @@
     "laterButton": "Plus tard",
     "currentVersion": "Version actuelle",
     "latestVersion": "Dernière version"
+  },
+  "clients": {
+    "title": "Clients",
+    "createClient": "Nouveau client",
+    "editClient": "Modifier le client",
+    "deleteClient": "Supprimer le client",
+    "deleteConfirm": "Supprimer le client « {name} » ? Il ne sera plus proposé lors des pesées, mais restera visible sur les pesées existantes.",
+    "deleted": "Client supprimé",
+    "name": "Nom du client",
+    "nameRequired": "Le nom du client est obligatoire",
+    "nameAlreadyExists": "Un client avec ce nom existe déjà",
+    "code": "Code (optionnel)",
+    "description": "Description (optionnelle)",
+    "noClients": "Aucun client enregistré"
   }
 }

@@ -5,7 +5,9 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/extensions.dart';
 import '../../../../core/i18n/app_localizations.dart';
 import '../../../auth/domain/models/user_model.dart';
-import '../../../users/presentation/providers/user_management_providers.dart';
+import '../../../auth/domain/models/permission.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../../users/presentation/widgets/delete_user_flow.dart';
 import '../providers/driver_providers.dart';
 import '../widgets/create_driver_dialog.dart';
 import '../widgets/edit_driver_dialog.dart';
@@ -241,6 +243,11 @@ class _DriverCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final canDelete = ref
+            .watch(authControllerProvider)
+            .valueOrNull
+            ?.hasPermission(Permission.deleteUsers) ??
+        false;
     final l10n = AppLocalizations.of(context);
     final assignmentAsync =
         ref.watch(activeAssignmentStreamForDriverProvider(driver.id));
@@ -363,12 +370,21 @@ class _DriverCard extends ConsumerWidget {
                   builder: (_) => EditDriverDialog(driver: driver),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Iconsax.trash, size: 18,
-                    color: AppColors.error),
-                tooltip: l10n.translate('driverManagement.deleteDriver'),
-                onPressed: () => _confirmDelete(context, ref, driver, l10n),
-              ),
+              // Suppression réservée à RH / Direction (T.39)
+              if (canDelete)
+                IconButton(
+                  icon: const Icon(Iconsax.trash, size: 18,
+                      color: AppColors.error),
+                  tooltip: l10n.translate('driverManagement.deleteDriver'),
+                  onPressed: () => confirmAndDeleteUser(
+                    context,
+                    ref,
+                    driver,
+                    titleKey: 'driverManagement.deleteDriver',
+                    confirmKey: 'driverManagement.confirmDeleteDriver',
+                    successKey: 'driverManagement.driverDeleted',
+                  ),
+                ),
               const Icon(Iconsax.arrow_right_3,
                   color: AppColors.textTertiary, size: 16),
             ],
@@ -376,53 +392,6 @@ class _DriverCard extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _confirmDelete(BuildContext context, WidgetRef ref,
-      UserModel driver, AppLocalizations l10n) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text(
-          l10n.translate('driverManagement.deleteDriver'),
-          style: const TextStyle(color: AppColors.textPrimary),
-        ),
-        content: Text(
-          l10n
-              .translate('driverManagement.confirmDeleteDriver')
-              .replaceAll('{name}', driver.fullName),
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(
-              l10n.translate('common.delete'),
-              style: const TextStyle(color: AppColors.error),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed ?? false) {
-      await ref
-          .read(userManagementRepositoryProvider)
-          .deactivateUser(driver.id);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(l10n.translate('driverManagement.driverDeleted')),
-            backgroundColor: AppColors.success,
-          ),
-        );
-      }
-    }
   }
 
   Widget _buildAvatar(UserModel driver) {

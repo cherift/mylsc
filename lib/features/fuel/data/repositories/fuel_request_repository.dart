@@ -55,8 +55,24 @@ class FuelRequestRepository {
 
   // ── Exécution (pompiste) ──
 
-  /// Marquer une demande comme servie
-  /// Auto-valide si le litrage servi correspond exactement au litrage demandé
+  /// Contrôle bloquant (T.36) : la quantité servie doit être égale à la
+  /// quantité demandée. À appeler AVANT toute écriture (sortie de stock).
+  /// Lance `quantity_mismatch` si les quantités diffèrent.
+  Future<void> ensureServedQuantityMatches({
+    required String requestId,
+    required double servedLiters,
+  }) async {
+    final doc = await _requestCollection.doc(requestId).get();
+    final requestedLiters =
+        (doc.data()?['requestedLiters'] as num?)?.toDouble() ?? 0;
+    if (!FuelRequestModel.quantitiesMatch(requestedLiters, servedLiters)) {
+      throw Exception('quantity_mismatch');
+    }
+  }
+
+  /// Marquer une demande comme servie.
+  /// La quantité servie doit être égale à la quantité demandée (T.36) :
+  /// la demande est alors auto-validée.
   Future<void> fulfillRequest({
     required String requestId,
     required String fulfilledBy,
@@ -67,10 +83,10 @@ class FuelRequestRepository {
     String? receiptNumber,
     String? observation,
   }) async {
-    // Lire la demande pour obtenir le litrage demandé
-    final doc = await _requestCollection.doc(requestId).get();
-    final requestedLiters =
-        (doc.data()?['requestedLiters'] as num?)?.toDouble() ?? 0;
+    await ensureServedQuantityMatches(
+      requestId: requestId,
+      servedLiters: fulfilledLiters,
+    );
 
     final now = Timestamp.fromDate(DateTime.now());
     final updateData = <String, dynamic>{
@@ -82,19 +98,13 @@ class FuelRequestRepository {
       'receiptPhotoUrl': receiptPhotoUrl,
       'receiptNumber': receiptNumber,
       'observation': observation,
+      // Quantité conforme (contrôlée ci-dessus) → auto-validation
+      'status': 'validated',
+      'validatedBy': 'system',
+      'validatedByName': 'Auto',
+      'validatedAt': now,
+      'isAutoValidated': true,
     };
-
-    // Auto-validation si le litrage servi == litrage demandé
-    if (fulfilledLiters == requestedLiters) {
-      updateData['status'] = 'validated';
-      updateData['validatedBy'] = 'system';
-      updateData['validatedByName'] = 'Auto';
-      updateData['validatedAt'] = now;
-      updateData['isAutoValidated'] = true;
-    } else {
-      updateData['status'] = 'fulfilled';
-      updateData['isAutoValidated'] = false;
-    }
 
     await _requestCollection.doc(requestId).update(updateData);
   }

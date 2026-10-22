@@ -343,9 +343,7 @@ class _CreateTruckDialogState extends ConsumerState<CreateTruckDialog> {
         typeEmbrayage: _typeEmbrayageController.text.isEmpty
             ? null
             : _typeEmbrayageController.text,
-        poidsAVide: _poidsAVideController.text.isEmpty
-            ? null
-            : double.parse(_poidsAVideController.text),
+        poidsAVide: TruckModel.parsePoidsAVide(_poidsAVideController.text),
         ptac: _ptacController.text.isEmpty
             ? null
             : double.parse(_ptacController.text),
@@ -779,6 +777,22 @@ class _CreateTruckDialogState extends ConsumerState<CreateTruckDialog> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          // Poids à vide (kg) — utilisé pour pré-remplir la pesée à vide (T.35)
+          _buildTextField(
+            controller: _poidsAVideController,
+            label: l10n.translate('trucks.fields.poidsAVide'),
+            hint: l10n.translate('trucks.placeholders.poidsAVide'),
+            icon: Iconsax.weight,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp('[0-9.,]')),
+            ],
+            validator: (value) => TruckModel.validatePoidsAVide(
+              value,
+              l10n.translate('trucks.createTruck.validation.poidsAVideInvalid'),
+            ),
           ),
         ],
       ),

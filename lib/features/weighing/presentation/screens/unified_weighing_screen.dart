@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/i18n/app_localizations.dart';
 import '../../../../core/widgets/inline_error_retry.dart';
@@ -15,6 +16,8 @@ import '../../../trucks/domain/models/truck_model.dart';
 import '../../../trucks/presentation/providers/truck_providers.dart';
 import '../../../shifts/presentation/providers/shift_providers.dart';
 import '../../../fleet/presentation/providers/fleet_providers.dart';
+import '../../../clients/domain/models/client_model.dart';
+import '../../../clients/presentation/providers/client_providers.dart';
 import '../../domain/models/weighing_record_model.dart';
 import '../providers/weighing_providers.dart';
 import '../widgets/weighing_detail_dialog.dart';
@@ -291,8 +294,16 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
   bool _isSubmitting = false;
   String? _errorMessage;
 
+  // Client concerné par la pesée (T.34) — obligatoire avant tout enregistrement
+  String? _selectedClientId;
+  String? _selectedClientName;
+
   // Mode reprise d'une pesée en attente
   WeighingRecordModel? _resumeRecord;
+
+  // Pré-remplissage de la pesée à vide depuis la fiche véhicule (T.35)
+  TruckModel? _resumeTruck;
+  String? _prefilledEmptyWeight;
 
   @override
   void initState() {
@@ -335,7 +346,73 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
       _photos.clear();
       _errorMessage = null;
       _resumeRecord = null;
+      _selectedClientId = null;
+      _selectedClientName = null;
+      _resumeTruck = null;
+      _prefilledEmptyWeight = null;
     });
+  }
+
+  // ── Pré-remplissage du poids à vide (T.35) ──
+
+  /// Camion de la pesée en cours (nouvelle pesée ou reprise)
+  TruckModel? get _currentTruck =>
+      _resumeRecord != null ? _resumeTruck : _selectedTruck;
+
+  /// Champ qui reçoit la pesée à vide : mine = 1er poids, port = 2e poids.
+  /// En reprise à la mine, le poids à vide est déjà enregistré.
+  TextEditingController? get _emptyWeightController {
+    final isMine = _location == WeighingLocation.mine;
+    if (_resumeRecord != null) {
+      return isMine ? null : _secondWeightController;
+    }
+    return isMine ? _firstWeightController : _secondWeightController;
+  }
+
+  String _formatTonnes(double t) {
+    final text = t.toStringAsFixed(3);
+    return text.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
+  /// Pré-remplit la pesée à vide avec le poids à vide du véhicule.
+  /// Ne remplace jamais une valeur saisie à la main par le pointeur.
+  void _prefillEmptyWeight() {
+    final previous = _prefilledEmptyWeight;
+    final target = _emptyWeightController;
+
+    // Retirer un ancien pré-remplissage devenu obsolète (lieu ou camion changé)
+    for (final c in [_firstWeightController, _secondWeightController]) {
+      if (c != target && previous != null && c.text == previous) c.clear();
+    }
+
+    final tonnes = _currentTruck?.poidsAVideTonnes;
+    if (target == null || tonnes == null) {
+      if (target != null && previous != null && target.text == previous) {
+        target.clear();
+      }
+      _prefilledEmptyWeight = null;
+      return;
+    }
+
+    if (target.text.isEmpty || target.text == previous) {
+      target.text = _formatTonnes(tonnes);
+      _prefilledEmptyWeight = target.text;
+    }
+  }
+
+  /// Récupère le camion d'une pesée reprise, puis pré-remplit (port)
+  Future<void> _loadResumeTruck(String truckId) async {
+    try {
+      final truck =
+          await ref.read(truckRepositoryProvider).getTruckById(truckId);
+      if (!mounted || _resumeRecord?.truckId != truckId) return;
+      setState(() {
+        _resumeTruck = truck;
+        _prefillEmptyWeight();
+      });
+    } catch (e) {
+      debugPrint('Chargement du camion pour pré-remplissage: $e');
+    }
   }
 
   /// Démarrer la reprise d'une pesée en attente
@@ -343,13 +420,19 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
     setState(() {
       _resumeRecord = record;
       _currentStep = 1; // Aller directement au second poids
+      // Le client choisi à l'entrée est conservé
+      _selectedClientId = record.clientId;
+      _selectedClientName = record.clientName;
       _location = record.location;
       _errorMessage = null;
       _secondWeightController.clear();
       _ticketController.text = record.ticketNumber ?? '';
       _notesController.clear();
       _photos.clear();
+      _resumeTruck = null;
+      _prefilledEmptyWeight = null;
     });
+    _loadResumeTruck(record.truckId);
   }
 
   double? _parseWeight(String text) {
@@ -409,6 +492,12 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
     if (_resumeRecord != null) {
       // Mode reprise: step 1 = second poids + ticket, step 2 = confirmation
       if (_currentStep == 1) {
+        // Anciennes pesées en attente sans client : choix obligatoire
+        if (_selectedClientId == null) {
+          setState(() => _errorMessage =
+              l10n.translate('weighing.clientRequired'));
+          return false;
+        }
         final w = _parseWeight(_secondWeightController.text);
         if (_secondWeightController.text.trim().isEmpty) {
           setState(() => _errorMessage =
@@ -436,6 +525,11 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
     } else {
       switch (_currentStep) {
         case 0:
+          if (_selectedClientId == null) {
+            setState(() => _errorMessage =
+                l10n.translate('weighing.clientRequired'));
+            return false;
+          }
           if (_selectedTruck == null) {
             setState(() => _errorMessage =
                 l10n.translate('weighing.truckRequired'));
@@ -483,7 +577,10 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
     if (!_validateStep()) return;
     final maxStep = _resumeRecord != null ? 2 : 3;
     if (_currentStep < maxStep) {
-      setState(() => _currentStep++);
+      setState(() {
+        _currentStep++;
+        _prefillEmptyWeight();
+      });
     }
   }
 
@@ -535,6 +632,8 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
         shiftId: activeShift?.id,
         driverId: activeShift?.driverId,
         driverName: activeShift?.driverName,
+        clientId: _selectedClientId,
+        clientName: _selectedClientName,
       );
 
       ref.invalidate(pendingWeighingsByUserProvider(user.id));
@@ -600,6 +699,10 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
               ? _notesController.text.trim()
               : null,
           photoUrls: photoUrls,
+          // Renseigné uniquement pour les anciennes pesées sans client
+          clientId: _resumeRecord!.clientId == null ? _selectedClientId : null,
+          clientName:
+              _resumeRecord!.clientId == null ? _selectedClientName : null,
         );
         savedRecord = _resumeRecord;
         ref.invalidate(pendingWeighingsByUserProvider(user.id));
@@ -627,6 +730,8 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
           shiftId: activeShift?.id,
           driverId: activeShift?.driverId,
           driverName: activeShift?.driverName,
+          clientId: _selectedClientId,
+          clientName: _selectedClientName,
           ticketNumber: _ticketController.text.trim().isNotEmpty
               ? _ticketController.text.trim()
               : null,
@@ -945,6 +1050,10 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
                 onPressed: () => setState(() {
                   _resumeRecord = null;
                   _currentStep = 0;
+                  _selectedClientId = null;
+                  _selectedClientName = null;
+                  _resumeTruck = null;
+                  _prefilledEmptyWeight = null;
                   _secondWeightController.clear();
                   _ticketController.clear();
                   _notesController.clear();
@@ -986,7 +1095,89 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
             firstLabel,
             '${firstWeight?.toStringAsFixed(2)} T',
           ),
+          if (rec.clientId != null)
+            _buildInfoRow(
+              Iconsax.building,
+              l10n.translate('weighing.client'),
+              rec.clientName ?? '-',
+            )
+          else ...[
+            const SizedBox(height: AppSpacing.sm),
+            _buildClientSelector(l10n),
+          ],
         ],
+      ),
+    );
+  }
+
+  /// Menu déroulant de sélection du client (T.34)
+  Widget _buildClientSelector(AppLocalizations l10n) {
+    final clientsAsync = ref.watch(activeClientsProvider);
+
+    return clientsAsync.when(
+      data: (clients) {
+        // Conserver l'affichage si le client choisi a été désactivé entre-temps
+        final items = <ClientModel>[
+          ...clients,
+          if (_selectedClientId != null &&
+              !clients.any((c) => c.id == _selectedClientId))
+            ClientModel(
+              id: _selectedClientId!,
+              name: _selectedClientName ?? _selectedClientId!,
+              createdAt: DateTime.now(),
+              createdBy: '',
+            ),
+        ];
+
+        return DropdownButtonFormField<String>(
+          // La clé force la reconstruction quand la sélection est réinitialisée
+          key: ValueKey('client-$_selectedClientId'),
+          initialValue: _selectedClientId,
+          isExpanded: true,
+          dropdownColor: AppColors.surface,
+          style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
+          decoration: InputDecoration(
+            labelText: l10n.translate('weighing.client'),
+            hintText: l10n.translate('weighing.selectClient'),
+            prefixIcon: const Icon(Iconsax.building,
+                color: AppColors.primary, size: 22),
+            filled: true,
+            fillColor: AppColors.surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderSide: const BorderSide(color: AppColors.surfaceBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+              borderSide: const BorderSide(color: AppColors.surfaceBorder),
+            ),
+          ),
+          items: items
+              .map((c) => DropdownMenuItem<String>(
+                    value: c.id,
+                    child: Text(c.displayName,
+                        overflow: TextOverflow.ellipsis),
+                  ))
+              .toList(),
+          onChanged: (id) {
+            final client = items.where((c) => c.id == id).firstOrNull;
+            setState(() {
+              _selectedClientId = client?.id;
+              _selectedClientName = client?.name;
+              _errorMessage = null;
+            });
+          },
+        );
+      },
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+        child: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      ),
+      error: (e, _) => Text(
+        '${l10n.translate('common.error')}: $e',
+        style: const TextStyle(color: AppColors.error),
       ),
     );
   }
@@ -997,6 +1188,18 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Sélecteur de client (T.34) — obligatoire avant tout enregistrement
+        Text(
+          l10n.translate('weighing.selectClient'),
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        _buildClientSelector(l10n),
+        const SizedBox(height: AppSpacing.xl),
         // Sélecteur de lieu
         Text(
           l10n.translate('weighing.selectLocation'),
@@ -1439,6 +1642,8 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
         ],
         _buildWeightField(
             controller: controller, label: label, hint: hint),
+        if (identical(controller, _emptyWeightController))
+          _buildEmptyWeightSourceNote(l10n, controller),
         if (dynamicNet != null && dynamicNet > 0) ...[
           const SizedBox(height: AppSpacing.lg),
           Container(
@@ -1526,6 +1731,46 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
           maxLines: 3,
         ),
       ],
+    );
+  }
+
+  /// Indique l'origine de la pesée à vide (fiche véhicule ou saisie)
+  Widget _buildEmptyWeightSourceNote(
+      AppLocalizations l10n, TextEditingController controller) {
+    final tonnes = _currentTruck?.poidsAVideTonnes;
+    final String text;
+    final Color color;
+    final IconData icon;
+    if (tonnes == null) {
+      text = l10n.translate('weighing.vehicleEmptyWeightMissing');
+      color = AppColors.warning;
+      icon = Iconsax.info_circle;
+    } else if (controller.text == _prefilledEmptyWeight) {
+      text = l10n
+          .translate('weighing.vehicleEmptyWeightPrefilled')
+          .replaceAll('{weight}', _formatTonnes(tonnes));
+      color = AppColors.info;
+      icon = Iconsax.truck;
+    } else {
+      text = l10n
+          .translate('weighing.vehicleEmptyWeightReference')
+          .replaceAll('{weight}', _formatTonnes(tonnes));
+      color = AppColors.textSecondary;
+      icon = Iconsax.truck;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(text, style: TextStyle(color: color, fontSize: 12)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1654,6 +1899,12 @@ class _WeighingFormTabState extends ConsumerState<_WeighingFormTab> {
           ),
           child: Column(
             children: [
+              _buildConfirmRow(
+                Iconsax.building,
+                l10n.translate('weighing.client'),
+                _selectedClientName ?? '-',
+              ),
+              const Divider(color: AppColors.surfaceBorder, height: 24),
               _buildConfirmRow(Iconsax.truck,
                   l10n.translate('weighing.vehicle'), immat),
               const Divider(color: AppColors.surfaceBorder, height: 24),
@@ -2101,6 +2352,10 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
   DateTime? _dateTo;
   bool _filtersVisible = false;
 
+  /// Filtre client : null = tous, [_noClientFilter] = pesées sans client
+  String? _clientFilter;
+  static const _noClientFilter = '__none__';
+
   final _vehicleCtrl = TextEditingController();
   final _agentCtrl = TextEditingController();
 
@@ -2116,6 +2371,7 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
       _agentFilter.isNotEmpty ||
       _locationFilter != null ||
       _statusFilter != null ||
+      _clientFilter != null ||
       _dateFrom != null ||
       _dateTo != null;
 
@@ -2125,6 +2381,7 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
       _agentFilter = '';
       _locationFilter = null;
       _statusFilter = null;
+      _clientFilter = null;
       _dateFrom = null;
       _dateTo = null;
       _vehicleCtrl.clear();
@@ -2149,6 +2406,12 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
       }
       if (_statusFilter != null && r.status != _statusFilter) {
         return false;
+      }
+      if (_clientFilter != null) {
+        final matches = _clientFilter == _noClientFilter
+            ? r.clientId == null
+            : r.clientId == _clientFilter;
+        if (!matches) return false;
       }
       if (_dateFrom != null) {
         final day =
@@ -2199,6 +2462,7 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
         return Column(
           children: [
             _buildFilterBar(context, l10n, completed.length, filtered.length),
+            _buildTotalsBanner(l10n, filtered),
             Expanded(
               child: filtered.isEmpty
                   ? Center(
@@ -2405,6 +2669,8 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
                       _buildStatusToggle(l10n),
                     ],
                   ),
+                  const SizedBox(height: AppSpacing.sm),
+                  _buildClientFilter(l10n),
                 ],
               ),
             ),
@@ -2412,6 +2678,91 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
           const Divider(height: 1, color: AppColors.surfaceBorder),
         ],
       ),
+    );
+  }
+
+  /// Cumul des pesées affichées : nombre + tonnage net (T.37)
+  Widget _buildTotalsBanner(
+      AppLocalizations l10n, List<WeighingRecordModel> filtered) {
+    final total = filtered.fold<double>(0, (sum, r) => sum + r.weight);
+    final totalText = NumberFormat('#,##0.00', 'fr_FR').format(total);
+
+    Widget block(String label, String value) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 11)),
+              const SizedBox(height: 2),
+              Text(value,
+                  style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
+        );
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Iconsax.calculator, color: AppColors.primary, size: 22),
+          const SizedBox(width: AppSpacing.md),
+          block(l10n.translate('weighing.totalCount'), '${filtered.length}'),
+          block(l10n.translate('weighing.totalTonnage'), '$totalText T'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClientFilter(AppLocalizations l10n) {
+    final clients =
+        ref.watch(activeClientsProvider).valueOrNull ?? const <ClientModel>[];
+    return DropdownButtonFormField<String?>(
+      key: ValueKey('client-filter-$_clientFilter'),
+      initialValue: _clientFilter,
+      isExpanded: true,
+      dropdownColor: AppColors.surface,
+      style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+      decoration: InputDecoration(
+        labelText: l10n.translate('weighing.filterClient'),
+        labelStyle:
+            const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        prefixIcon: const Icon(Iconsax.building,
+            size: 16, color: AppColors.textSecondary),
+        isDense: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.surfaceBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderSide: const BorderSide(color: AppColors.surfaceBorder),
+        ),
+      ),
+      items: [
+        DropdownMenuItem<String?>(
+          child: Text(l10n.translate('weighing.filterAll')),
+        ),
+        ...clients.map((c) => DropdownMenuItem<String?>(
+              value: c.id,
+              child: Text(c.displayName, overflow: TextOverflow.ellipsis),
+            )),
+        DropdownMenuItem<String?>(
+          value: _noClientFilter,
+          child: Text(l10n.translate('weighing.noClient')),
+        ),
+      ],
+      onChanged: (value) => setState(() => _clientFilter = value),
     );
   }
 
@@ -2619,6 +2970,18 @@ class _HistoryTabState extends ConsumerState<_HistoryTab> {
                     },
                     style: const TextStyle(
                         color: AppColors.textSecondary, fontSize: 12),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  const Icon(Iconsax.building,
+                      color: AppColors.textSecondary, size: 14),
+                  const SizedBox(width: AppSpacing.xs),
+                  Flexible(
+                    child: Text(
+                      record.clientName ?? l10n.translate('weighing.noClient'),
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),

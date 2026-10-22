@@ -32,6 +32,7 @@ enum Permission {
   exportData,
   manageSettings,
   viewAuditLogs,
+  manageClients,
   fullAccess,
 
   // Permissions Carburant
@@ -53,6 +54,7 @@ enum Permission {
   // Permissions Pesée
   recordWeighing,
   viewWeighings,
+  editWeighings,
 
   // Permissions Rotations (Trips)
   validateTrip,
@@ -134,6 +136,8 @@ extension PermissionExtension on Permission {
         return 'Gérer les paramètres';
       case Permission.viewAuditLogs:
         return "Voir l'historique d'audit";
+      case Permission.manageClients:
+        return 'Gérer les clients';
       case Permission.fullAccess:
         return 'Accès complet';
 
@@ -168,6 +172,8 @@ extension PermissionExtension on Permission {
         return 'Enregistrer une pesée';
       case Permission.viewWeighings:
         return 'Voir les pesées';
+      case Permission.editWeighings:
+        return 'Corriger toutes les pesées';
 
       // Rotations
       case Permission.validateTrip:
@@ -218,6 +224,7 @@ extension PermissionExtension on Permission {
       case Permission.exportData:
       case Permission.manageSettings:
       case Permission.viewAuditLogs:
+      case Permission.manageClients:
       case Permission.fullAccess:
         return PermissionCategory.administration;
 
@@ -239,6 +246,7 @@ extension PermissionExtension on Permission {
 
       case Permission.recordWeighing:
       case Permission.viewWeighings:
+      case Permission.editWeighings:
         return PermissionCategory.weighing;
 
       case Permission.validateTrip:
@@ -304,6 +312,8 @@ extension PermissionExtension on Permission {
         return Iconsax.setting_2;
       case Permission.viewAuditLogs:
         return Iconsax.note;
+      case Permission.manageClients:
+        return Iconsax.building;
       case Permission.fullAccess:
         return Iconsax.star;
 
@@ -338,6 +348,8 @@ extension PermissionExtension on Permission {
         return Iconsax.weight;
       case Permission.viewWeighings:
         return Iconsax.chart_2;
+      case Permission.editWeighings:
+        return Iconsax.edit;
 
       // Rotations
       case Permission.validateTrip:
@@ -398,6 +410,8 @@ extension PermissionExtension on Permission {
         return 'Permet de gérer les paramètres de l\'application';
       case Permission.viewAuditLogs:
         return 'Permet de consulter l\'historique des modifications';
+      case Permission.manageClients:
+        return 'Permet de créer et gérer les clients des pesées';
       case Permission.fullAccess:
         return 'Donne un accès complet à toute l\'application';
       case Permission.addFuel:
@@ -424,6 +438,8 @@ extension PermissionExtension on Permission {
         return 'Permet d\'enregistrer une pesée sur le pont bascule';
       case Permission.viewWeighings:
         return 'Permet de consulter l\'historique des pesées';
+      case Permission.editWeighings:
+        return 'Permet de corriger les erreurs de saisie de toutes les pesées (avec traçabilité)';
       case Permission.validateTrip:
         return 'Permet de valider une rotation complète';
       case Permission.viewTrips:

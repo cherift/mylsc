@@ -5,13 +5,16 @@ import '../theme/app_theme.dart';
 import '../i18n/app_localizations.dart';
 import '../../features/trucks/domain/models/truck_model.dart';
 import '../../features/dashboard/domain/models/dashboard_filter.dart';
+import '../../features/clients/domain/models/client_model.dart';
 
-/// Modale réutilisable pour filtrer les dashboards par date et par véhicule
+/// Modale réutilisable pour filtrer les dashboards par date, par véhicule
+/// et (si [availableClients] est fourni) par client — T.37
 class DashboardFilterModal extends StatefulWidget {
   const DashboardFilterModal({
     required this.availableTrucks,
     required this.currentFilter,
     required this.onApply,
+    this.availableClients = const [],
     super.key,
   });
 
@@ -19,12 +22,16 @@ class DashboardFilterModal extends StatefulWidget {
   final DashboardFilter currentFilter;
   final ValueChanged<DashboardFilter> onApply;
 
+  /// Clients proposés au filtrage (section masquée si vide)
+  final List<ClientModel> availableClients;
+
   /// Affiche la modale de filtre centrée dans l'écran
   static Future<void> show(
     BuildContext context, {
     required List<TruckModel> availableTrucks,
     required DashboardFilter currentFilter,
     required ValueChanged<DashboardFilter> onApply,
+    List<ClientModel> availableClients = const [],
   }) {
     return showDialog<void>(
       context: context,
@@ -41,6 +48,7 @@ class DashboardFilterModal extends StatefulWidget {
               availableTrucks: availableTrucks,
               currentFilter: currentFilter,
               onApply: onApply,
+              availableClients: availableClients,
             ),
           ),
         ),
@@ -60,9 +68,23 @@ class _DashboardFilterModalState extends State<DashboardFilterModal> {
   String _search = '';
   final _searchController = TextEditingController();
 
+  // Clients (T.37) — inclut DashboardFilter.noClientId (pesées sans client)
+  late Set<String> _selectedClientIds;
+
+  Set<String> get _allClientIds => {
+        ...widget.availableClients.map((c) => c.id),
+        DashboardFilter.noClientId,
+      };
+
+  bool get _allClientsSelected =>
+      _allClientIds.every(_selectedClientIds.contains);
+
   @override
   void initState() {
     super.initState();
+    _selectedClientIds = widget.currentFilter.selectedClientIds != null
+        ? Set.from(widget.currentFilter.selectedClientIds!)
+        : _allClientIds;
     _startDate = widget.currentFilter.dateRange?.start;
     _endDate = widget.currentFilter.dateRange?.end;
 
@@ -147,8 +169,19 @@ class _DashboardFilterModalState extends State<DashboardFilterModal> {
     });
   }
 
+  void _toggleClient(String id, bool value) {
+    setState(() {
+      if (value) {
+        _selectedClientIds.add(id);
+      } else {
+        _selectedClientIds.remove(id);
+      }
+    });
+  }
+
   void _reset() {
     setState(() {
+      _selectedClientIds = _allClientIds;
       _startDate = null;
       _endDate = null;
       _selectedIds = widget.availableTrucks.map((t) => t.id).toSet();
@@ -170,9 +203,15 @@ class _DashboardFilterModalState extends State<DashboardFilterModal> {
     final truckIds =
         _selectAll ? null : Set<String>.from(_selectedIds);
 
+    // null = pas de restriction (tous les clients sélectionnés)
+    final clientIds = widget.availableClients.isEmpty || _allClientsSelected
+        ? null
+        : Set<String>.from(_selectedClientIds);
+
     widget.onApply(DashboardFilter(
       dateRange: dateRange,
       selectedTruckIds: truckIds,
+      selectedClientIds: clientIds,
     ));
     Navigator.of(context).pop();
   }
@@ -254,6 +293,64 @@ class _DashboardFilterModalState extends State<DashboardFilterModal> {
                       ),
                     ),
                     const Divider(color: AppColors.surfaceBorder, height: 24),
+
+                    // ── Section Clients (pesées — T.37) ──────────────
+                    if (widget.availableClients.isNotEmpty) ...[
+                      _buildSectionHeader(Iconsax.building,
+                          l10n.translate('dashboard.filterClients')),
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.lg),
+                        title: Text(
+                          l10n.translate('dashboard.filterSelectAll'),
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        value: _allClientsSelected,
+                        activeColor: AppColors.primary,
+                        onChanged: (v) => setState(() {
+                          _selectedClientIds =
+                              (v ?? false) ? _allClientIds : <String>{};
+                        }),
+                      ),
+                      for (final client in widget.availableClients)
+                        CheckboxListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.lg),
+                          title: Text(
+                            client.displayName,
+                            style: const TextStyle(
+                                color: AppColors.textPrimary, fontSize: 13),
+                          ),
+                          value: _selectedClientIds.contains(client.id),
+                          activeColor: AppColors.primary,
+                          onChanged: (v) =>
+                              _toggleClient(client.id, v ?? false),
+                        ),
+                      CheckboxListTile(
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.lg),
+                        title: Text(
+                          l10n.translate('weighing.noClient'),
+                          style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic),
+                        ),
+                        value: _selectedClientIds
+                            .contains(DashboardFilter.noClientId),
+                        activeColor: AppColors.primary,
+                        onChanged: (v) => _toggleClient(
+                            DashboardFilter.noClientId, v ?? false),
+                      ),
+                      const Divider(color: AppColors.surfaceBorder, height: 24),
+                    ],
 
                     // ── Section Véhicules ────────────────────────────
                     if (widget.availableTrucks.isNotEmpty) ...[

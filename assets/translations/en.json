@@ -84,7 +84,8 @@
     "filterSelectAll": "Select all",
     "filterReset": "Reset",
     "filterApply": "Apply",
-    "filterNoDate": "All dates"
+    "filterNoDate": "All dates",
+    "filterClients": "Clients"
   },
   "users": {
     "management": "User Management",
@@ -177,6 +178,15 @@
       "update": "Update",
       "success": "User updated successfully",
       "error": "Error: {error}"
+    },
+    "delete": {
+      "button": "Delete",
+      "title": "Delete user",
+      "confirm": "Delete user \"{name}\"?",
+      "success": "User deleted",
+      "consequences": "The account will no longer be able to log in and will no longer appear in lists. History (weighings, shifts, fuel) is kept.",
+      "blockedActiveShift": "Cannot delete \"{name}\": a shift is in progress. End it first.",
+      "cannotDeleteSelf": "You cannot delete your own account."
     }
   },
   "settings": {
@@ -321,7 +331,8 @@
       "validation": {
         "required": "This field is required",
         "yearInvalid": "Year must be between 1900 and {year}",
-        "kmInvalid": "Initial mileage cannot exceed current mileage"
+        "kmInvalid": "Initial mileage cannot exceed current mileage",
+        "poidsAVideInvalid": "Invalid empty weight (between 1,000 and 60,000 kg)"
       },
       "success": "Truck created successfully!",
       "error": "Error creating truck"
@@ -379,7 +390,8 @@
       "normeMoteur": "Engine Standard",
       "radarNumber": "Radar No.",
       "kilometrageInitial": "Initial Mileage",
-      "notes": "Notes"
+      "notes": "Notes",
+      "poidsAVide": "Empty weight (kg)"
     },
     "placeholders": {
       "immatriculation": "Ex: AB-123-CD",
@@ -406,7 +418,8 @@
       "garagePrestataire": "Ex: Dupont Garage",
       "identifiantGPS": "Ex: GPS-12345",
       "fournisseurGPS": "Ex: TomTom, Garmin...",
-      "notes": "Additional notes..."
+      "notes": "Additional notes...",
+      "poidsAVide": "E.g. 21500"
     },
     "configuration": {
       "config4x2": "4x2",
@@ -437,7 +450,16 @@
       "parHeures": "By Engine Hours",
       "parTemps": "By Time (months)"
     },
-    "searchHint": "Search by plate or internal number..."
+    "searchHint": "Search by plate or internal number...",
+    "delete": {
+      "button": "Delete",
+      "title": "Delete vehicle",
+      "confirm": "Delete vehicle {truck}?",
+      "consequences": "It will be removed from its fleet and no longer appear in lists; its driver assignments will be ended. History (weighings, fuel, inspections) is kept.",
+      "success": "Vehicle deleted",
+      "blockedActiveShift": "Cannot delete {truck}: a shift is in progress on this vehicle.",
+      "blockedPendingFuel": "Cannot delete {truck}: a fuel request is pending. Cancel or serve it first."
+    }
   },
   "fuel": {
     "title": "Add Fuel",
@@ -507,7 +529,8 @@
     "receiptNumberRequired": "Receipt number is mandatory",
     "photoRequired": "A photo of the slip is mandatory",
     "observation": "Observation",
-    "fulfilledAt": "Fuel taken on"
+    "fulfilledAt": "Fuel taken on",
+    "quantityMismatch": "The quantity served must equal the quantity requested ({requested} L). Correct the quantity entered to confirm the refuel."
   },
   "inspection": {
     "title": "Vehicle Inspection",
@@ -748,7 +771,29 @@
     "chargedBy": "Loaded by",
     "dischargedBy": "Unloaded by",
     "chargeSuccess": "Loading confirmed successfully!",
-    "dischargeSuccess": "Unloading confirmed successfully!"
+    "dischargeSuccess": "Unloading confirmed successfully!",
+    "client": "Client",
+    "selectClient": "Select the client",
+    "clientRequired": "Please select the client before recording the weighing",
+    "noClient": "Client not specified",
+    "filterClient": "Client",
+    "vehicleEmptyWeightPrefilled": "Value from the vehicle record ({weight} T) — can be changed if the scale shows a different value",
+    "vehicleEmptyWeightReference": "Vehicle record empty weight: {weight} T",
+    "vehicleEmptyWeightMissing": "Empty weight not set on the vehicle record — enter the scale reading",
+    "totalCount": "Number of weighings",
+    "totalTonnage": "Total tonnage",
+    "edit": {
+      "button": "Correct",
+      "title": "Correct weighing",
+      "reason": "Reason for correction",
+      "reasonHint": "E.g. loaded weight typing error",
+      "reasonRequired": "The reason for the correction is required",
+      "ticketLocked": "The ticket number can only be corrected by an administrator",
+      "netMustBePositive": "Loaded weight must be greater than empty weight",
+      "noChanges": "No changes to save",
+      "saved": "Weighing corrected",
+      "lastEdited": "Edited on {date} by {name}"
+    }
   },
   "storage": {
     "title": "Storage Zone",
@@ -1036,7 +1081,12 @@
     "vacationsCount": "Completed shifts / total",
     "detailVacations": "Shifts detail",
     "filterByTruck": "Filter by truck...",
-    "filterByDate": "Filter by date range"
+    "filterByDate": "Filter by date range",
+    "allClients": "All clients",
+    "totalCount": "Number of records",
+    "totalValue": "Total",
+    "totalRow": "TOTAL",
+    "exportSummary": "Export complete — {countLabel}: {count} · {totalLabel}: {total}"
   },
   "photos": {
     "title": "Photos",
@@ -1196,5 +1246,19 @@
     "laterButton": "Later",
     "currentVersion": "Current version",
     "latestVersion": "Latest version"
+  },
+  "clients": {
+    "title": "Clients",
+    "createClient": "New client",
+    "editClient": "Edit client",
+    "deleteClient": "Delete client",
+    "deleteConfirm": "Delete client \"{name}\"? It will no longer be offered when weighing, but will remain visible on existing weighings.",
+    "deleted": "Client deleted",
+    "name": "Client name",
+    "nameRequired": "Client name is required",
+    "nameAlreadyExists": "A client with this name already exists",
+    "code": "Code (optional)",
+    "description": "Description (optional)",
+    "noClients": "No clients registered"
   }
 }

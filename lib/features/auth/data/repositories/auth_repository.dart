@@ -40,6 +40,12 @@ class AuthRepository {
 
         // Si le profil existe dans Firestore, mettre à jour la dernière connexion et le retourner
         if (userProfile != null) {
+          // Compte désactivé ou supprimé (T.39) : connexion refusée
+          if (!userProfile.isActive) {
+            await _firebaseAuth.signOut();
+            throw Exception(
+                'Ce compte a été désactivé. Contactez votre administrateur.');
+          }
           await _updateLastLogin(userCredential.user!.uid);
           return userProfile;
         }

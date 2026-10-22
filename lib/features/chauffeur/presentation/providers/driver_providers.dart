@@ -12,8 +12,13 @@ import '../../../weighing/presentation/providers/weighing_providers.dart';
 final allDriversProvider = Provider<AsyncValue<List<UserModel>>>((ref) {
   final usersAsync = ref.watch(usersStreamProvider);
   return usersAsync.whenData(
+    // Chauffeurs actifs uniquement : un chauffeur supprimé (T.32.2 / T.39)
+    // est désactivé et ne doit plus apparaître ni être compté
     (users) => users
-        .where((u) => u.role?.toLowerCase() == 'chauffeur')
+        .where((u) =>
+            u.role?.toLowerCase() == 'chauffeur' &&
+            u.isActive &&
+            !u.isDeleted)
         .toList(),
   );
 });

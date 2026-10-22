@@ -162,6 +162,14 @@ class TruckFields {
     icon: Iconsax.gas_station,
   );
 
+  static const poidsAVide = TruckField(
+    key: 'poidsAVide',
+    label: 'Poids à vide (kg)',
+    category: TruckFieldCategory.caracteristiquesTechniques,
+    icon: Iconsax.weight,
+    isDefault: true,
+  );
+
   static const ptac = TruckField(
     key: 'ptac',
     label: 'PTAC (kg)',
@@ -340,6 +348,7 @@ class TruckFields {
         typeCarburant,
         puissanceCV,
         capaciteReservoir,
+        poidsAVide,
         ptac,
         chargeUtileMax,
         boiteVitesses,

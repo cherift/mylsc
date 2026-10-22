@@ -23,6 +23,7 @@ import '../../../shifts/presentation/providers/shift_providers.dart';
 import '../../../weighing/presentation/providers/weighing_providers.dart';
 import '../../../breakdown/presentation/providers/breakdown_providers.dart';
 import '../../../dashboard/domain/models/dashboard_filter.dart';
+import '../../../clients/presentation/providers/client_providers.dart';
 import '../../../fuel/domain/models/fuel_request_model.dart';
 import '../../../fuel/presentation/providers/fuel_request_providers.dart';
 
@@ -66,6 +67,8 @@ class _FleetStatisticsScreenState
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final fleetsAsync = ref.watch(allFleetsProvider);
+    // Garde les clients chargés pour la modale de filtre (T.37)
+    ref.watch(activeClientsProvider);
 
     return fleetsAsync.when(
       data: (fleets) {
@@ -381,6 +384,7 @@ class _FleetStatisticsScreenState
     DashboardFilterModal.show(
       context,
       availableTrucks: trucks,
+      availableClients: ref.read(activeClientsProvider).valueOrNull ?? [],
       currentFilter: _filter,
       onApply: (f) => setState(() => _filter = f),
     );
@@ -472,9 +476,11 @@ class _FleetStatisticsScreenState
         ref.read(allShiftsStreamProvider).valueOrNull ?? [];
     final mine = allMine.where((w) =>
         truckIds.contains(w.truckId) &&
+        _filter.matchesClient(w.clientId) &&
         (_filter.matchesDate(w.createdAt))).toList();
     final port = allPort.where((w) =>
         truckIds.contains(w.truckId) &&
+        _filter.matchesClient(w.clientId) &&
         (_filter.matchesDate(w.createdAt))).toList();
     final breakdowns =
         allBreakdowns.where((b) => truckIds.contains(b.truckId)).length;
@@ -531,6 +537,18 @@ class _FleetStatisticsScreenState
     return selected.map((f) => f.name).join(', ');
   }
 
+  /// Clients filtrés (pesées — T.37) ; null si aucun filtre client
+  String? _clientsSummaryStats(AppLocalizations l10n) {
+    final ids = _filter.selectedClientIds;
+    if (ids == null) return null;
+    final clients = ref.read(activeClientsProvider).valueOrNull ?? [];
+    return [
+      ...clients.where((c) => ids.contains(c.id)).map((c) => c.name),
+      if (ids.contains(DashboardFilter.noClientId))
+        l10n.translate('weighing.noClient'),
+    ].join(', ');
+  }
+
   String _vehiclesSummaryStats(AppLocalizations l10n) {
     final ids = _filter.selectedTruckIds;
     if (ids == null || ids.isEmpty) return l10n.translate('common.exportAllVehicles');
@@ -545,6 +563,10 @@ class _FleetStatisticsScreenState
     buffer.writeln('"${l10n.translate('common.exportPeriod')}";"${_periodSummary(l10n)}"');
     buffer.writeln('"${l10n.translate('common.exportFleets')}";"${_fleetsSummaryStats(l10n, fleets)}"');
     buffer.writeln('"${l10n.translate('common.exportVehicles')}";"${_vehiclesSummaryStats(l10n)}"');
+    final clientsSummary = _clientsSummaryStats(l10n);
+    if (clientsSummary != null) {
+      buffer.writeln('"${l10n.translate('weighing.client')}";"$clientsSummary"');
+    }
     buffer.writeln();
     final headers = _buildExportHeaders(l10n);
     buffer.writeln(headers.join(';'));
@@ -601,6 +623,10 @@ class _FleetStatisticsScreenState
     addInfoRow(l10n.translate('common.exportPeriod'), _periodSummary(l10n));
     addInfoRow(l10n.translate('common.exportFleets'), _fleetsSummaryStats(l10n, fleets));
     addInfoRow(l10n.translate('common.exportVehicles'), _vehiclesSummaryStats(l10n));
+    final clientsSummary = _clientsSummaryStats(l10n);
+    if (clientsSummary != null) {
+      addInfoRow(l10n.translate('weighing.client'), clientsSummary);
+    }
     sheet.appendRow([xl.TextCellValue('')]);
 
     final headers = _buildExportHeaders(l10n);
@@ -690,6 +716,11 @@ class _FleetStatisticsScreenState
             if (_filter.selectedTruckIds != null && _filter.selectedTruckIds!.isNotEmpty)
               pw.Text(
                 '${l10n.translate('common.exportVehicles')} : ${_vehiclesSummaryStats(l10n)}',
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+              ),
+            if (_clientsSummaryStats(l10n) != null)
+              pw.Text(
+                '${l10n.translate('weighing.client')} : ${_clientsSummaryStats(l10n)}',
                 style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
               ),
           ],
@@ -1045,11 +1076,15 @@ class _FleetStatsCard extends ConsumerWidget {
     final allShiftsAll =
         ref.watch(allShiftsStreamProvider).valueOrNull ?? [];
 
-    // Filtre date + camion sur les pesées
+    // Filtre date + camion + client sur les pesées
     final mine = allMine.where((w) =>
-        truckIds.contains(w.truckId) && filter.matchesDate(w.createdAt)).toList();
+        truckIds.contains(w.truckId) &&
+        filter.matchesClient(w.clientId) &&
+        filter.matchesDate(w.createdAt)).toList();
     final port = allPort.where((w) =>
-        truckIds.contains(w.truckId) && filter.matchesDate(w.createdAt)).toList();
+        truckIds.contains(w.truckId) &&
+        filter.matchesClient(w.clientId) &&
+        filter.matchesDate(w.createdAt)).toList();
     final breakdowns =
         allBreakdowns.where((b) => truckIds.contains(b.truckId)).length;
     final activeShifts =

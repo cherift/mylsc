@@ -46,6 +46,16 @@ class DirectionTonnageSection extends ConsumerWidget {
           portWeighings.where((w) => filter!.matchesTruck(w.truckId)).toList();
     }
 
+    // Appliquer le filtre client (T.37)
+    if (filter != null && filter!.selectedClientIds != null) {
+      mineWeighings = mineWeighings
+          .where((w) => filter!.matchesClient(w.clientId))
+          .toList();
+      portWeighings = portWeighings
+          .where((w) => filter!.matchesClient(w.clientId))
+          .toList();
+    }
+
     // Appliquer le filtre date pour les mini stats (totaux)
     final mineFiltered = filter != null
         ? mineWeighings

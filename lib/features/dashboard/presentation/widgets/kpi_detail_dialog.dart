@@ -23,6 +23,8 @@ class KpiDetailItem {
     this.extraData,
     this.dateTime,
     this.truckImmatriculation,
+    this.numericValue,
+    this.clientName,
   });
 
   final String title;
@@ -36,6 +38,12 @@ class KpiDetailItem {
   final DateTime? dateTime;
 
   final String? truckImmatriculation;
+
+  /// Valeur numérique cumulée dans le total (ex. tonnage net) — T.37
+  final double? numericValue;
+
+  /// Client de la pesée (null = non renseigné) — T.37
+  final String? clientName;
 }
 
 /// Dialog de detail d'un KPI avec export multi-format et filtres (T.13.1)
@@ -46,6 +54,12 @@ class KpiDetailDialog extends StatefulWidget {
     required this.color,
     required this.items,
     required this.xmlRootName,
+    this.totalUnit,
+    this.countLabel,
+    this.totalLabel,
+    this.enableClientFilter = false,
+    this.initialDateRange,
+    this.exportFilters = const {},
     super.key,
   });
 
@@ -55,6 +69,25 @@ class KpiDetailDialog extends StatefulWidget {
   final List<KpiDetailItem> items;
   final String xmlRootName;
 
+  /// Unité du cumul (ex. 'T'). Si renseignée, affiche le nombre total
+  /// d'enregistrements et la somme des [KpiDetailItem.numericValue],
+  /// et ajoute une ligne TOTAL aux exports — T.37
+  final String? totalUnit;
+
+  /// Libellés du cumul (ex. « Nombre de pesées », « Tonnage total »)
+  final String? countLabel;
+  final String? totalLabel;
+
+  /// Affiche un filtre par client (pesées) — T.37
+  final bool enableClientFilter;
+
+  /// Période déjà appliquée par le dashboard (reprise dans les exports)
+  final DateTimeRange? initialDateRange;
+
+  /// Autres filtres du dashboard à reporter dans l'en-tête des exports
+  /// (libellé → valeur), ex. véhicules, clients — T.23 / T.37
+  final Map<String, String> exportFilters;
+
   @override
   State<KpiDetailDialog> createState() => _KpiDetailDialogState();
 }
@@ -62,8 +95,36 @@ class KpiDetailDialog extends StatefulWidget {
 class _KpiDetailDialogState extends State<KpiDetailDialog> {
   DateTimeRange? _dateRange;
   String _truckFilter = '';
+  String? _clientFilter;
   String _selectedFormat = 'excel';
   final _searchController = TextEditingController();
+
+  static const _noClientKey = '__none__';
+
+  @override
+  void initState() {
+    super.initState();
+    _dateRange = widget.initialDateRange;
+  }
+
+  bool get _showTotals => widget.totalUnit != null;
+
+  double _sumOf(List<KpiDetailItem> items) =>
+      items.fold<double>(0, (sum, i) => sum + (i.numericValue ?? 0));
+
+  String _formatTotal(double value) =>
+      NumberFormat('#,##0.00', 'fr_FR').format(value);
+
+  /// Clients présents dans les données (pour le filtre local)
+  List<String> get _clientNames {
+    final names = widget.items
+        .map((i) => i.clientName)
+        .whereType<String>()
+        .toSet()
+        .toList()
+      ..sort();
+    return names;
+  }
 
   @override
   void dispose() {
@@ -77,6 +138,11 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
       if (_truckFilter.isNotEmpty) {
         final immat = (item.truckImmatriculation ?? item.title).toLowerCase();
         if (!immat.contains(_truckFilter.toLowerCase())) return false;
+      }
+      // Filtre par client
+      if (_clientFilter != null) {
+        final key = item.clientName ?? _noClientKey;
+        if (key != _clientFilter) return false;
       }
       // Filtre par plage de dates
       if (_dateRange != null && item.dateTime != null) {
@@ -150,6 +216,7 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
               ),
             ),
             if (_hasFilters) _buildFilters(context, l10n),
+            if (_showTotals) _buildTotalsBanner(l10n, filtered),
             // List
             Flexible(
               child: filtered.isEmpty
@@ -476,6 +543,102 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
               ),
             ),
           ],
+          // Filtre par client (pesées — T.37)
+          if (widget.enableClientFilter) ...[
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              height: 40,
+              child: DropdownButtonFormField<String?>(
+                initialValue: _clientFilter,
+                isExpanded: true,
+                dropdownColor: AppColors.surface,
+                style: const TextStyle(
+                    color: AppColors.textPrimary, fontSize: 13),
+                decoration: InputDecoration(
+                  prefixIcon: Icon(Iconsax.building,
+                      color: _clientFilter != null
+                          ? widget.color
+                          : AppColors.textTertiary,
+                      size: 16),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    borderSide:
+                        const BorderSide(color: AppColors.surfaceBorder),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                    borderSide: BorderSide(
+                      color: _clientFilter != null
+                          ? widget.color
+                          : AppColors.surfaceBorder,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: AppColors.background,
+                ),
+                items: [
+                  DropdownMenuItem<String?>(
+                    child: Text(l10n.translate('directionDashboard.allClients')),
+                  ),
+                  for (final name in _clientNames)
+                    DropdownMenuItem<String?>(value: name, child: Text(name)),
+                  DropdownMenuItem<String?>(
+                    value: _noClientKey,
+                    child: Text(l10n.translate('weighing.noClient')),
+                  ),
+                ],
+                onChanged: (v) => setState(() => _clientFilter = v),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Cumul affiché après filtrage : nombre d'enregistrements + total (T.37)
+  Widget _buildTotalsBanner(
+      AppLocalizations l10n, List<KpiDetailItem> filtered) {
+    Widget block(String label, String value) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      color: AppColors.textSecondary, fontSize: 11)),
+              const SizedBox(height: 2),
+              Text(value,
+                  style: TextStyle(
+                      color: widget.color,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
+        );
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+          AppSpacing.md, AppSpacing.sm, AppSpacing.md, 0),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: widget.color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: widget.color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Iconsax.calculator, color: widget.color, size: 22),
+          const SizedBox(width: AppSpacing.md),
+          block(
+            widget.countLabel ?? l10n.translate('directionDashboard.totalCount'),
+            '${filtered.length}',
+          ),
+          block(
+            widget.totalLabel ?? l10n.translate('directionDashboard.totalValue'),
+            '${_formatTotal(_sumOf(filtered))} ${widget.totalUnit}',
+          ),
         ],
       ),
     );
@@ -524,14 +687,69 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
     return '${_formatDate(dr.start)} → ${_formatDate(dr.end)}';
   }
 
+  /// Lignes d'en-tête des exports : période + tous les filtres actifs
+  /// (dashboard et dialog) — T.23 / T.37
+  List<MapEntry<String, String>> _exportHeaderLines(AppLocalizations l10n) {
+    return [
+      MapEntry(l10n.translate('common.exportPeriod'), _periodLabel(l10n)),
+      ...widget.exportFilters.entries,
+      if (_truckFilter.isNotEmpty)
+        MapEntry(l10n.translate('common.exportVehicles'), _truckFilter),
+      if (_clientFilter != null)
+        MapEntry(
+          l10n.translate('weighing.client'),
+          _clientFilter == _noClientKey
+              ? l10n.translate('weighing.noClient')
+              : _clientFilter!,
+        ),
+    ];
+  }
+
+  /// Ligne TOTAL (même nombre de colonnes que l'en-tête) — T.37
+  List<String> _totalRow(
+      AppLocalizations l10n, List<KpiDetailItem> filtered, int columnCount) {
+    final row = [
+      l10n.translate('directionDashboard.totalRow'),
+      '${widget.countLabel ?? l10n.translate('directionDashboard.totalCount')} : ${filtered.length}',
+      '${_sumOf(filtered).toStringAsFixed(2)} ${widget.totalUnit}',
+    ];
+    while (row.length < columnCount) {
+      row.add('');
+    }
+    return row;
+  }
+
+  /// Confirmation après export avec le cumul exporté — T.37
+  void _showExportSummary(
+      BuildContext context, List<KpiDetailItem> filtered) {
+    if (!_showTotals || !context.mounted) return;
+    final l10n = AppLocalizations.of(context);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: AppColors.success,
+        content: Text(
+          l10n
+              .translate('directionDashboard.exportSummary')
+              .replaceAll('{countLabel}',
+                  widget.countLabel ?? l10n.translate('directionDashboard.totalCount'))
+              .replaceAll('{count}', '${filtered.length}')
+              .replaceAll('{totalLabel}',
+                  widget.totalLabel ?? l10n.translate('directionDashboard.totalValue'))
+              .replaceAll('{total}',
+                  '${_formatTotal(_sumOf(filtered))} ${widget.totalUnit}'),
+          style: const TextStyle(color: Colors.white),
+        ),
+      ),
+    );
+  }
+
   // ── Export CSV ──────────────────────────────────────────────
   Future<void> _exportCsv(
       BuildContext context, List<KpiDetailItem> filtered) async {
     final l10n = AppLocalizations.of(context);
     final buffer = StringBuffer();
-    buffer.writeln('"${l10n.translate('common.exportPeriod')}";"${_periodLabel(l10n)}"');
-    if (_truckFilter.isNotEmpty) {
-      buffer.writeln('"${l10n.translate('common.exportVehicles')}";"$_truckFilter"');
+    for (final line in _exportHeaderLines(l10n)) {
+      buffer.writeln('"${line.key}";"${line.value}"');
     }
     buffer.writeln();
     // En-têtes
@@ -545,10 +763,16 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
     for (final item in filtered) {
       buffer.writeln(_buildCsvRow(item).join(';'));
     }
+    if (_showTotals) {
+      buffer.writeln(_totalRow(l10n, filtered, headerFields.length)
+          .map((v) => '"$v"')
+          .join(';'));
+    }
     final filename =
         '${widget.xmlRootName}_${DateTime.now().millisecondsSinceEpoch}.csv';
     if (kIsWeb) {
       downloadFileWeb(buffer.toString(), filename);
+      _showExportSummary(context, filtered);
       return;
     }
     try {
@@ -558,6 +782,7 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
       await SharePlus.instance.share(
         ShareParams(files: [XFile(file.path)], title: widget.title),
       );
+      if (context.mounted) _showExportSummary(context, filtered);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
@@ -586,9 +811,8 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
       sheet.cell(xl.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: rowIdx)).cellStyle = infoStyle;
     }
 
-    addInfoRow(l10n.translate('common.exportPeriod'), _periodLabel(l10n));
-    if (_truckFilter.isNotEmpty) {
-      addInfoRow(l10n.translate('common.exportVehicles'), _truckFilter);
+    for (final line in _exportHeaderLines(l10n)) {
+      addInfoRow(line.key, line.value);
     }
     sheet.appendRow([xl.TextCellValue('')]);
 
@@ -618,6 +842,19 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
       sheet.appendRow(row.map(xl.TextCellValue.new).toList());
     }
 
+    if (_showTotals) {
+      sheet.appendRow(_totalRow(l10n, filtered, headerFields.length)
+          .map(xl.TextCellValue.new)
+          .toList());
+      final totalRowIdx = sheet.maxRows - 1;
+      for (var c = 0; c < headerFields.length; c++) {
+        sheet
+            .cell(xl.CellIndex.indexByColumnRow(
+                columnIndex: c, rowIndex: totalRowIdx))
+            .cellStyle = infoStyle;
+      }
+    }
+
     for (var c = 0; c < headerFields.length; c++) {
       sheet.setColumnWidth(c, 22);
     }
@@ -628,6 +865,7 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
         '${widget.xmlRootName}_${DateTime.now().millisecondsSinceEpoch}.xlsx';
     if (kIsWeb) {
       downloadFileBytesWeb(bytes, filename);
+      _showExportSummary(context, filtered);
       return;
     }
     try {
@@ -637,6 +875,7 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
       await SharePlus.instance.share(
         ShareParams(files: [XFile(file.path)], title: widget.title),
       );
+      if (context.mounted) _showExportSummary(context, filtered);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)
@@ -650,6 +889,7 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
       BuildContext context, List<KpiDetailItem> filtered) async {
     final l10n = AppLocalizations.of(context);
     final pdf = pw.Document();
+    final headerLines = _exportHeaderLines(l10n);
 
     final headerFields = ['Titre', 'Sous-titre', 'Valeur'];
     final firstWithExtra =
@@ -669,13 +909,9 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
               style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
             ),
             pw.SizedBox(height: 4),
-            pw.Text(
-              '${l10n.translate('common.exportPeriod')} : ${_periodLabel(l10n)}',
-              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
-            ),
-            if (_truckFilter.isNotEmpty)
+            for (final line in headerLines)
               pw.Text(
-                '${l10n.translate('common.exportVehicles')} : $_truckFilter',
+                '${line.key} : ${line.value}',
                 style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
               ),
           ],
@@ -724,6 +960,20 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
                       .toList(),
                 );
               }),
+              if (_showTotals)
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(
+                      color: PdfColor.fromInt(0xFFEFF6FF)),
+                  children: _totalRow(l10n, filtered, headerFields.length)
+                      .map((cell) => pw.Padding(
+                            padding: const pw.EdgeInsets.all(5),
+                            child: pw.Text(cell,
+                                style: pw.TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: pw.FontWeight.bold)),
+                          ))
+                      .toList(),
+                ),
             ],
           ),
           pw.SizedBox(height: 6),
@@ -742,9 +992,11 @@ class _KpiDetailDialogState extends State<KpiDetailDialog> {
       final pdfBytes = await pdf.save();
       if (kIsWeb) {
         downloadFileBytesWeb(pdfBytes, filename);
+        if (context.mounted) _showExportSummary(context, filtered);
         return;
       }
       await printOrSharePdf(pdfBytes, filename: filename);
+      if (context.mounted) _showExportSummary(context, filtered);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context)

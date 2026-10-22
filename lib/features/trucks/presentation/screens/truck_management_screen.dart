@@ -10,6 +10,7 @@ import '../providers/truck_providers.dart';
 import '../utils/truck_field_value_extractor.dart';
 import '../widgets/create_truck_dialog.dart';
 import '../widgets/customize_columns_dialog.dart';
+import '../widgets/delete_truck_flow.dart';
 import 'truck_dashboard_screen.dart';
 
 /// Écran de gestion des camions
@@ -498,6 +499,14 @@ class _TruckManagementScreenState
                 ],
               ),
             ),
+            // Suppression réservée à Direction / RH (T.40)
+            if (canDeleteTrucks(ref))
+              IconButton(
+                icon: const Icon(Iconsax.trash,
+                    color: AppColors.error, size: 18),
+                tooltip: l10n.translate('trucks.delete.button'),
+                onPressed: () => confirmAndDeleteTruck(context, ref, truck),
+              ),
             const Icon(Iconsax.arrow_right_3,
                 color: AppColors.textSecondary, size: 18),
           ],
@@ -541,7 +550,7 @@ class _TruckManagementScreenState
             );
           }),
           SizedBox(
-            width: 60,
+            width: canDeleteTrucks(ref) ? 100 : 60,
             child: Text(
               l10n.translate('trucks.actions'),
               textAlign: TextAlign.center,
@@ -592,14 +601,26 @@ class _TruckManagementScreenState
               );
             }),
             SizedBox(
-              width: 60,
-              child: Center(
-                child: IconButton(
-                  onPressed: () => _openTruckDashboard(truck),
-                  icon: const Icon(Iconsax.eye, size: 18),
-                  color: AppColors.primary,
-                  tooltip: l10n.translate('trucks.viewDashboard'),
-                ),
+              width: canDeleteTrucks(ref) ? 100 : 60,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: () => _openTruckDashboard(truck),
+                    icon: const Icon(Iconsax.eye, size: 18),
+                    color: AppColors.primary,
+                    tooltip: l10n.translate('trucks.viewDashboard'),
+                  ),
+                  // Suppression réservée à Direction / RH (T.40)
+                  if (canDeleteTrucks(ref))
+                    IconButton(
+                      onPressed: () =>
+                          confirmAndDeleteTruck(context, ref, truck),
+                      icon: const Icon(Iconsax.trash, size: 18),
+                      color: AppColors.error,
+                      tooltip: l10n.translate('trucks.delete.button'),
+                    ),
+                ],
               ),
             ),
           ],

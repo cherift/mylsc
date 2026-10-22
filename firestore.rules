@@ -232,6 +232,23 @@ service cloud.firestore {
     }
 
     // ------------------------------------------------------------------
+    // clients (clients des pesées : CBG, TBA, GEMIC…) — T.33
+    // ------------------------------------------------------------------
+    match /clients/{clientId} {
+      allow read: if isActiveUser();
+
+      // Admin (Direction/RH) ; les 3 clients par défaut peuvent être
+      // initialisés par n'importe quel utilisateur actif (seed idempotent).
+      allow create: if isAdmin() ||
+        (isActiveUser() && clientId in ['cbg', 'tba', 'gemic']);
+
+      allow update: if isAdmin();
+
+      // Suppression logique uniquement (isActive=false)
+      allow delete: if false;
+    }
+
+    // ------------------------------------------------------------------
     // trucks
     // ------------------------------------------------------------------
     match /trucks/{truckId} {
@@ -350,6 +367,7 @@ service cloud.firestore {
     match /weighings/{weighingId} {
       allow read: if isActiveUser() && (
         isTopFleetManager() ||
+        isRH() ||
         hasAnyRole(['superviseurMine', 'superviseurPort', 'superviseurStockage', 'responsableOperations']) ||
         resource.data.driverId == uid() ||
         isSupervisorOfFleet(truckFleetId(resource.data.truckId))
@@ -371,7 +389,26 @@ service cloud.firestore {
         // T.27.1/T.27.4 : le n° de bon ne peut pas être modifié une fois saisi
         (resource.data.ticketNumber == null || fieldUnchanged('ticketNumber'));
 
+      // T.38 : correction par l'admin (Direction/RH), y compris le n° de bon,
+      // toujours accompagnée d'une trace dans `edits`
+      allow update: if isAdmin() &&
+        fieldUnchanged('truckId') &&
+        request.resource.data.lastEditedBy == uid();
+
       allow delete: if isDirection();
+
+      // Historique des corrections (T.38) : ajout seul, jamais modifié
+      match /edits/{editId} {
+        allow read: if isActiveUser();
+        allow create: if (
+            isAdmin() ||
+            hasAnyRole(['superviseurMine', 'superviseurPort', 'superviseurStockage'])
+          ) &&
+          request.resource.data.editedBy == uid() &&
+          request.resource.data.reason is string &&
+          request.resource.data.reason.size() > 0;
+        allow update, delete: if false;
+      }
     }
 
     // ------------------------------------------------------------------
@@ -422,9 +459,11 @@ service cloud.firestore {
         get(/databases/$(database)/documents/shifts/$(request.resource.data.shiftId)).data.status == 'active';
 
       // Pompiste : sert le carburant (reçu + photo obligatoires — T.26.1 / T.26.3)
+      // T.36 : quantité servie = quantité demandée → auto-validation
       allow update: if hasRole('pompiste') &&
         resource.data.status == 'pending' &&
-        request.resource.data.status == 'fulfilled' &&
+        request.resource.data.status == 'validated' &&
+        request.resource.data.fulfilledLiters == resource.data.requestedLiters &&
         request.resource.data.fulfilledBy == uid() &&
         request.resource.data.receiptNumber is string &&
         request.resource.data.receiptNumber.size() > 0 &&

@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 
 /// Modèle de filtre pour les dashboards
-/// Permet de filtrer les données par plage de dates et/ou par liste de camions
+/// Permet de filtrer les données par plage de dates, par liste de camions
+/// et/ou par client (pesées — T.37)
 class DashboardFilter {
   const DashboardFilter({
     this.dateRange,
     this.selectedTruckIds,
+    this.selectedClientIds,
   });
+
+  /// Identifiant réservé aux pesées sans client (antérieures à T.34)
+  static const noClientId = '__none__';
 
   /// Plage de dates sélectionnée (null = pas de restriction)
   final DateTimeRange? dateRange;
@@ -14,10 +19,21 @@ class DashboardFilter {
   /// IDs des camions sélectionnés (null = pas de restriction, empty set = aucun)
   final Set<String>? selectedTruckIds;
 
+  /// IDs des clients sélectionnés (null = pas de restriction).
+  /// Peut contenir [noClientId] pour inclure les pesées sans client.
+  final Set<String>? selectedClientIds;
+
   /// Vrai si au moins un filtre est actif
   bool get isActive =>
       dateRange != null ||
-      (selectedTruckIds != null && selectedTruckIds!.isNotEmpty);
+      (selectedTruckIds != null && selectedTruckIds!.isNotEmpty) ||
+      selectedClientIds != null;
+
+  /// Vérifie si une pesée (par son client) passe le filtre
+  bool matchesClient(String? clientId) {
+    if (selectedClientIds == null) return true;
+    return selectedClientIds!.contains(clientId ?? noClientId);
+  }
 
   /// Vérifie si un camion passe le filtre
   bool matchesTruck(String truckId) {
@@ -48,13 +64,18 @@ class DashboardFilter {
   DashboardFilter copyWith({
     DateTimeRange? dateRange,
     Set<String>? selectedTruckIds,
+    Set<String>? selectedClientIds,
     bool clearDateRange = false,
     bool clearTruckIds = false,
+    bool clearClientIds = false,
   }) {
     return DashboardFilter(
       dateRange: clearDateRange ? null : (dateRange ?? this.dateRange),
       selectedTruckIds:
           clearTruckIds ? null : (selectedTruckIds ?? this.selectedTruckIds),
+      selectedClientIds: clearClientIds
+          ? null
+          : (selectedClientIds ?? this.selectedClientIds),
     );
   }
 }

@@ -290,13 +290,29 @@ class UserManagementRepository {
     }
   }
 
-  /// Supprimer un utilisateur (désactivation logique uniquement)
-  Future<void> deleteUser(String userId) async {
-    try {
-      await deactivateUser(userId);
-    } catch (e) {
-      rethrow;
-    }
+  /// Raison bloquant la suppression d'un utilisateur (T.39), null si aucune.
+  /// - `active_shift` : chauffeur actuellement en vacation
+  Future<String?> checkDeletionBlockers(String userId) async {
+    final activeShift = await _firestore
+        .collection('shifts')
+        .where('driverId', isEqualTo: userId)
+        .where('status', isEqualTo: 'active')
+        .limit(1)
+        .get();
+    if (activeShift.docs.isNotEmpty) return 'active_shift';
+    return null;
+  }
+
+  /// Supprimer un utilisateur (T.39) : désactivation logique, masqué des
+  /// listes de gestion. Le compte ne peut plus se connecter et l'historique
+  /// (pesées, vacations, carburant) est conservé.
+  Future<void> deleteUser(String userId, {String? deletedBy}) async {
+    await _firestore.collection('users').doc(userId).update({
+      'isActive': false,
+      'isDeleted': true,
+      'deletedAt': Timestamp.now(),
+      'deletedBy': deletedBy,
+    });
   }
 
   /// Compter le nombre total d'utilisateurs

@@ -427,6 +427,33 @@ class TruckModel {
       );
 
   /// Conversion vers Firestore
+  // ============ POIDS À VIDE (T.35) ============
+
+  /// Poids à vide en tonnes (unité des pesées), null si non renseigné
+  double? get poidsAVideTonnes =>
+      (poidsAVide != null && poidsAVide! > 0) ? poidsAVide! / 1000 : null;
+
+  /// Lit la saisie (kg, virgule ou point) ; null si vide ou invalide
+  static double? parsePoidsAVide(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return null;
+    return double.tryParse(trimmed.replaceAll(',', '.'));
+  }
+
+  /// Champ facultatif ; s'il est saisi : nombre entre 1 000 et 60 000 kg
+  static String? validatePoidsAVide(String? value, String errorMessage) {
+    if (value == null || value.trim().isEmpty) return null;
+    final kg = parsePoidsAVide(value);
+    if (kg == null || kg < 1000 || kg > 60000) return errorMessage;
+    return null;
+  }
+
+  /// Valeur initiale du champ de saisie (sans « .0 » superflu)
+  static String formatPoidsAVideInput(double? kg) {
+    if (kg == null) return '';
+    return kg == kg.roundToDouble() ? kg.toInt().toString() : kg.toString();
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'proprietaire': proprietaire,

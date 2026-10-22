@@ -6,9 +6,12 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/i18n/app_localizations.dart';
 import '../../../../core/utils/extensions.dart';
 import '../../../../core/widgets/inline_error_retry.dart';
+import '../../../auth/domain/models/permission.dart';
 import '../../../auth/domain/models/user_model.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/user_management_providers.dart';
 import '../widgets/create_user_dialog.dart';
+import '../widgets/delete_user_flow.dart';
 import '../widgets/edit_user_dialog.dart';
 
 /// Écran de gestion des utilisateurs - Réservé au rôle RH
@@ -381,12 +384,15 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
   }
 
   Widget _buildUsersList(List<UserModel> users) {
-    // Les chauffeurs sont gérés depuis l'écran Chauffeurs — exclure ici
-    var filteredUsers = users.where((u) => u.role?.toLowerCase() != 'chauffeur').toList();
+    // Les chauffeurs sont gérés depuis l'écran Chauffeurs — exclure ici.
+    // Les utilisateurs supprimés (T.39) ne sont plus affichés.
+    var filteredUsers = users
+        .where((u) => u.role?.toLowerCase() != 'chauffeur' && !u.isDeleted)
+        .toList();
 
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
-      filteredUsers = users.where((user) {
+      filteredUsers = filteredUsers.where((user) {
         return user.fullName.toLowerCase().contains(query) ||
             user.email.toLowerCase().contains(query) ||
             (user.matricule?.toLowerCase().contains(query) ?? false) ||
@@ -504,11 +510,33 @@ class _UserManagementScreenState extends ConsumerState<UserManagementScreen> {
               onPressed: () => _toggleUserStatus(user),
               tooltip: user.isActive ? 'Désactiver' : 'Activer',
             ),
+            // Suppression réservée à RH / Direction (T.39)
+            if (_canDeleteUsers)
+              IconButton(
+                icon: const Icon(Iconsax.trash, color: AppColors.error),
+                tooltip: AppLocalizations.of(context)
+                    .translate('users.delete.button'),
+                onPressed: () => confirmAndDeleteUser(
+                  context,
+                  ref,
+                  user,
+                  titleKey: 'users.delete.title',
+                  confirmKey: 'users.delete.confirm',
+                  successKey: 'users.delete.success',
+                ),
+              ),
           ],
         ),
       ),
     );
   }
+
+  bool get _canDeleteUsers =>
+      ref
+          .watch(authControllerProvider)
+          .valueOrNull
+          ?.hasPermission(Permission.deleteUsers) ??
+      false;
 
   Widget _buildUserAvatar(UserModel user) {
     final hasPhoto = user.photoUrl != null && user.photoUrl!.isNotEmpty;

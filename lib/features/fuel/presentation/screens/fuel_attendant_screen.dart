@@ -196,6 +196,23 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
     );
   }
 
+  /// Litres saisis par le pompiste (null si vide ou invalide)
+  double? get _enteredLiters =>
+      double.tryParse(_litersController.text.trim().replaceAll(',', '.'));
+
+  /// Écart entre quantité servie et quantité demandée (T.36) — bloquant
+  bool get _hasQuantityMismatch {
+    final liters = _enteredLiters;
+    final request = _validatedRequest;
+    if (liters == null || request == null) return false;
+    return !FuelRequestModel.quantitiesMatch(request.requestedLiters, liters);
+  }
+
+  String _quantityMismatchMessage(AppLocalizations l10n) => l10n
+      .translate('fuel.quantityMismatch')
+      .replaceAll(
+          '{requested}', _validatedRequest!.requestedLiters.toStringAsFixed(1));
+
   Future<void> _submitFuelEntry() async {
     final l10n = AppLocalizations.of(context);
     if (_validatedRequest == null) return;
@@ -228,6 +245,14 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
       return;
     }
 
+    // Contrôle bloquant : quantité servie = quantité demandée (T.36)
+    if (_hasQuantityMismatch) {
+      setState(() {
+        _errorMessage = _quantityMismatchMessage(l10n);
+      });
+      return;
+    }
+
     final user = ref.read(authControllerProvider).value;
     if (user == null) return;
 
@@ -237,6 +262,14 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
     });
 
     try {
+      // Revérification côté serveur AVANT la sortie de stock, au cas où la
+      // demande aurait été modifiée depuis son affichage
+      final requestRepo = ref.read(fuelRequestRepositoryProvider);
+      await requestRepo.ensureServedQuantityMatches(
+        requestId: _validatedRequest!.id,
+        servedLiters: liters,
+      );
+
       final repository = ref.read(fuelRepositoryProvider);
       final entry = await repository.addFuelEntry(
         truckId: _validatedRequest!.truckId,
@@ -248,8 +281,7 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
         receiptPhoto: _receiptPhoto,
       );
 
-      // Mark request as fulfilled
-      final requestRepo = ref.read(fuelRequestRepositoryProvider);
+      // Mark request as fulfilled (auto-validée : quantité conforme)
       await requestRepo.fulfillRequest(
         requestId: _validatedRequest!.id,
         fulfilledBy: user.id,
@@ -263,14 +295,14 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
             : null,
       );
 
-      final isAutoValidated = liters == _validatedRequest!.requestedLiters;
-
       if (mounted) {
-        _showSuccessDialog(isAutoValidated: isAutoValidated);
+        _showSuccessDialog(isAutoValidated: true);
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Erreur: $e';
+        _errorMessage = e.toString().contains('quantity_mismatch')
+            ? _quantityMismatchMessage(l10n)
+            : 'Erreur: $e';
       });
     } finally {
       if (mounted) {
@@ -778,7 +810,35 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
           ],
           fontSize: 32,
           suffix: 'L',
+          hasError: _hasQuantityMismatch,
+          onChanged: (_) => setState(() {
+            // Effacer une ancienne erreur d'écart dès que la saisie change
+            if (_errorMessage != null &&
+                _errorMessage == _quantityMismatchMessage(l10n)) {
+              _errorMessage = null;
+            }
+          }),
         ),
+        if (_hasQuantityMismatch) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Iconsax.warning_2, color: AppColors.error, size: 18),
+              const SizedBox(width: AppSpacing.xs),
+              Expanded(
+                child: Text(
+                  _quantityMismatchMessage(l10n),
+                  style: const TextStyle(
+                    color: AppColors.error,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: AppSpacing.md),
         // Numéro de reçu (obligatoire)
         _buildTextField(
@@ -886,7 +946,10 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
           width: double.infinity,
           height: 72,
           child: ElevatedButton(
-            onPressed: _isSubmitting ? null : _submitFuelEntry,
+            // Bloqué tant que la quantité servie diffère de la demande (T.36)
+            onPressed: _isSubmitting || _hasQuantityMismatch
+                ? null
+                : _submitFuelEntry,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.success,
               padding: const EdgeInsets.symmetric(
@@ -1228,15 +1291,21 @@ class _FuelAttendantScreenState extends ConsumerState<FuelAttendantScreen> {
     List<TextInputFormatter>? inputFormatters,
     double fontSize = 18,
     String? suffix,
+    bool hasError = false,
+    ValueChanged<String>? onChanged,
   }) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.surfaceBorder),
+        border: Border.all(
+          color: hasError ? AppColors.error : AppColors.surfaceBorder,
+          width: hasError ? 2 : 1,
+        ),
       ),
       child: TextField(
         controller: controller,
+        onChanged: onChanged,
         keyboardType: keyboardType,
         textCapitalization: textCapitalization,
         inputFormatters: inputFormatters,

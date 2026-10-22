@@ -6,6 +6,7 @@ import '../../../../core/i18n/app_localizations.dart';
 import '../../../../core/widgets/dashboard_filter_modal.dart';
 import '../../../auth/domain/models/user_model.dart';
 import '../../../trucks/presentation/providers/truck_providers.dart';
+import '../../../clients/presentation/providers/client_providers.dart';
 import '../../domain/models/dashboard_filter.dart';
 import 'dashboard_section_card.dart';
 import 'direction_kpi_row.dart';
@@ -30,9 +31,11 @@ class _DirectionDashboardState extends ConsumerState<DirectionDashboard> {
 
   void _openFilter(BuildContext context) {
     final trucks = ref.read(trucksStreamProvider).valueOrNull ?? [];
+    final clients = ref.read(activeClientsProvider).valueOrNull ?? [];
     DashboardFilterModal.show(
       context,
       availableTrucks: trucks,
+      availableClients: clients,
       currentFilter: _filter,
       onApply: (newFilter) => setState(() => _filter = newFilter),
     );

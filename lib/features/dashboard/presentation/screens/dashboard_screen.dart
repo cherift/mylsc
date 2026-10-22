@@ -25,6 +25,7 @@ import '../widgets/direction_dashboard.dart';
 import '../../../statistics/presentation/screens/fleet_statistics_screen.dart';
 import '../../../fuel/presentation/screens/ravitaillement_screen.dart';
 import '../../../storage/presentation/screens/storage_supervisor_screen.dart';
+import '../../../clients/presentation/screens/client_list_screen.dart';
 
 // ─── Nav item data ────────────────────────────────────────────────────────────
 
@@ -140,6 +141,14 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         icon: Iconsax.people,
         label: l10n.translate('dashboard.userManagement'),
         pageIndex: 4,
+      ));
+    }
+
+    if (user.hasPermission(Permission.manageClients)) {
+      items.add(_NavItem(
+        icon: Iconsax.building,
+        label: l10n.translate('clients.title'),
+        pageIndex: 11,
       ));
     }
 
@@ -416,10 +425,11 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       padding: const EdgeInsets.all(AppSpacing.md),
       children: [
         for (int i = 0; i < items.length; i++) ...[
-          // Section header avant "Administration"
+          // Section header avant "Administration" (Utilisateurs, puis Clients)
           if (!isSupervisorFlotte &&
-              items[i].pageIndex == 4 &&
-              user.hasPermission(Permission.viewUsers)) ...[
+              (items[i].pageIndex == 4 ||
+                  (items[i].pageIndex == 11 &&
+                      !user.hasPermission(Permission.viewUsers)))) ...[
             const SizedBox(height: AppSpacing.md),
             Padding(
               padding: const EdgeInsets.symmetric(
@@ -637,6 +647,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         return const FleetStatisticsScreen();
       case 10:
         return const RavitaillementScreen();
+      case 11:
+        return const ClientListScreen();
       default:
         final l10n = AppLocalizations.of(context);
         return Center(

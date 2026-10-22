@@ -3,6 +3,7 @@ import '../../../shifts/presentation/providers/shift_providers.dart';
 import '../../../trucks/presentation/providers/truck_providers.dart';
 import '../../../trucks/domain/models/truck_model.dart';
 import '../../data/repositories/weighing_repository.dart';
+import '../../domain/models/weighing_edit_model.dart';
 import '../../domain/models/weighing_record_model.dart';
 
 /// Provider pour le repository des pesées
@@ -113,4 +114,18 @@ final trucksInActiveShiftProvider = StreamProvider<List<TruckModel>>((ref) {
 final activeTrucksStreamProvider = StreamProvider<List<TruckModel>>((ref) {
   final repository = ref.watch(truckRepositoryProvider);
   return repository.watchActiveTrucks();
+});
+
+// =============== CORRECTION DES PESÉES (T.38) ===============
+
+/// Pesée suivie en temps réel (détail rafraîchi après correction)
+final weighingRecordProvider =
+    StreamProvider.family<WeighingRecordModel?, String>((ref, recordId) {
+  return ref.watch(weighingRepositoryProvider).watchRecord(recordId);
+});
+
+/// Historique des corrections d'une pesée
+final weighingEditsProvider =
+    StreamProvider.family<List<WeighingEditModel>, String>((ref, recordId) {
+  return ref.watch(weighingRepositoryProvider).watchEdits(recordId);
 });

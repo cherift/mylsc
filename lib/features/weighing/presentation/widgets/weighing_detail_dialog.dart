@@ -10,7 +10,12 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/i18n/app_localizations.dart';
 import '../../../../core/utils/pdf_utils.dart';
 import '../../../../core/widgets/photo_picker_widget.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../domain/models/weighing_edit_model.dart';
 import '../../domain/models/weighing_record_model.dart';
+import '../../domain/weighing_edit_policy.dart';
+import '../providers/weighing_providers.dart';
+import 'weighing_edit_dialog.dart';
 
 /// Dialog de détail d'une pesée — consultation, photos, impression.
 class WeighingDetailDialog extends ConsumerStatefulWidget {
@@ -27,7 +32,23 @@ class _WeighingDetailDialogState
     extends ConsumerState<WeighingDetailDialog> {
   bool _isPrinting = false;
 
-  WeighingRecordModel get r => widget.record;
+  /// Version à jour de la pesée (rafraîchie après une correction — T.38)
+  WeighingRecordModel? _live;
+
+  WeighingRecordModel get r => _live ?? widget.record;
+
+  Future<void> _openEditDialog(AppLocalizations l10n) async {
+    final corrected = await showDialog<bool>(
+      context: context,
+      builder: (_) => WeighingEditDialog(record: r),
+    );
+    if ((corrected ?? false) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: AppColors.success,
+        content: Text(l10n.translate('weighing.edit.saved')),
+      ));
+    }
+  }
 
   // ── Helpers d'affichage ────────────────────────────────────────────
 
@@ -183,6 +204,8 @@ class _WeighingDetailDialogState
                   _pdfRow(l10n.translate('weighing.fleetNumber'),
                       r.truckFleetNumber!),
                 _pdfRow(l10n.translate('weighing.location'), locationLabel),
+                _pdfRow(l10n.translate('weighing.client'),
+                    r.clientName ?? l10n.translate('weighing.noClient')),
               ]),
               pw.SizedBox(height: 8),
 
@@ -344,6 +367,9 @@ class _WeighingDetailDialogState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    _live = ref.watch(weighingRecordProvider(widget.record.id)).valueOrNull;
+    final user = ref.watch(authControllerProvider).valueOrNull;
+    final canEdit = user != null && WeighingEditPolicy.canEdit(user, r);
 
     return Dialog(
       backgroundColor: AppColors.background,
@@ -432,6 +458,10 @@ class _WeighingDetailDialogState
                     const SizedBox(height: AppSpacing.md),
                     _buildPhotosCard(l10n),
                   ],
+                  if (r.wasEdited) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    _buildEditHistoryCard(l10n),
+                  ],
                 ],
               ),
             ),
@@ -447,7 +477,28 @@ class _WeighingDetailDialogState
                 bottomRight: Radius.circular(AppRadius.lg),
               ),
             ),
-            child: ElevatedButton(
+            child: Row(
+              children: [
+                if (canEdit) ...[
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openEditDialog(l10n),
+                      icon: const Icon(Iconsax.edit, size: 18),
+                      label: Text(l10n.translate('weighing.edit.button')),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                        side: const BorderSide(color: AppColors.primary),
+                        minimumSize: const Size(0, 48),
+                        shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppRadius.md)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                ],
+                Expanded(
+                  child: ElevatedButton(
               onPressed: _isPrinting ? null : () => _printTicket(l10n),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
@@ -471,20 +522,97 @@ class _WeighingDetailDialogState
                         const Icon(Iconsax.printer,
                             color: Colors.white, size: 18),
                         const SizedBox(width: AppSpacing.sm),
-                        Text(
-                          l10n.translate('weighing.printTicket'),
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600),
+                        Flexible(
+                          child: Text(
+                            l10n.translate('weighing.printTicket'),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ],
                     ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
       ),
+    );
+  }
+
+  /// Historique des corrections (T.38)
+  Widget _buildEditHistoryCard(AppLocalizations l10n) {
+    final edits =
+        ref.watch(weighingEditsProvider(r.id)).valueOrNull ?? const [];
+    String fmtDate(DateTime d) =>
+        '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} '
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+    String fieldLabel(String field) => switch (field) {
+          'emptyWeight' => l10n.translate('weighing.emptyWeight'),
+          'loadedWeight' => l10n.translate('weighing.loadedWeight'),
+          'weight' => l10n.translate('weighing.netWeight'),
+          'ticketNumber' => l10n.translate('weighing.ticketNumber'),
+          'clientName' => l10n.translate('weighing.client'),
+          'notes' => l10n.translate('weighing.notes'),
+          _ => field,
+        };
+
+    String fmtValue(Object? v) {
+      if (v == null || (v is String && v.isEmpty)) return '—';
+      if (v is num) return '${v.toStringAsFixed(2)} T';
+      return '$v';
+    }
+
+    return _buildCard(
+      children: [
+        Row(
+          children: [
+            const Icon(Iconsax.edit, color: AppColors.warning, size: 18),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                l10n
+                    .translate('weighing.edit.lastEdited')
+                    .replaceAll('{date}', fmtDate(r.lastEditedAt!))
+                    .replaceAll('{name}', r.lastEditedByName ?? '-'),
+                style: const TextStyle(
+                    color: AppColors.warning,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        for (final WeighingEditModel edit in edits) ...[
+          _divider(),
+          Text(
+            '${fmtDate(edit.editedAt)} — ${edit.editedByName}',
+            style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${l10n.translate('weighing.edit.reason')} : ${edit.reason}',
+            style:
+                const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+          for (final entry in edit.changes.entries
+              .where((e) => e.key != 'clientId'))
+            Text(
+              '• ${fieldLabel(entry.key)} : ${fmtValue(entry.value.old)} → ${fmtValue(entry.value.value)}',
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 12),
+            ),
+        ],
+      ],
     );
   }
 
@@ -515,6 +643,12 @@ class _WeighingDetailDialogState
           isMine
               ? l10n.translate('weighing.mine')
               : l10n.translate('weighing.port'),
+        ),
+        _divider(),
+        _buildRow(
+          Iconsax.building,
+          l10n.translate('weighing.client'),
+          r.clientName ?? l10n.translate('weighing.noClient'),
         ),
         _divider(),
         Row(

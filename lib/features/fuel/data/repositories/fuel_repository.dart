@@ -143,14 +143,18 @@ class FuelRepository {
       final querySnapshot = await _firestore
           .collection('trucks')
           .where('immatriculation', isEqualTo: normalizedImmat)
-          .limit(1)
           .get();
 
-      if (querySnapshot.docs.isEmpty) {
+      // Ignorer les véhicules supprimés (T.40) — une immatriculation peut
+      // avoir été réutilisée par un nouveau véhicule
+      final activeDocs = querySnapshot.docs
+          .where((d) => (d.data()['isActive'] as bool?) ?? true)
+          .toList();
+      if (activeDocs.isEmpty) {
         return null;
       }
 
-      final doc = querySnapshot.docs.first;
+      final doc = activeDocs.first;
       final truck = TruckModel.fromMap(doc.data(), doc.id);
 
       // Vérifier si le numéro de flotte correspond

@@ -8,6 +8,7 @@ import '../../../../core/i18n/app_localizations.dart';
 import '../../domain/models/truck_model.dart';
 import '../../domain/models/truck_field.dart';
 import '../providers/truck_providers.dart';
+import '../widgets/delete_truck_flow.dart';
 import '../widgets/edit_truck_dialog.dart';
 import '../widgets/dashboard/fuel_gauge_widget.dart';
 import '../widgets/dashboard/speed_gauge_widget.dart';
@@ -39,6 +40,7 @@ class _TruckDashboardScreenState extends ConsumerState<TruckDashboardScreen> {
   // Champs visibles sur le tableau de bord
   List<String> _visibleFields = [
     'kilometrageActuel',
+    'poidsAVide',
     'heuresMoteur',
     'siteAffectation',
     'typeActivite',
@@ -694,6 +696,18 @@ class _TruckDashboardScreenState extends ConsumerState<TruckDashboardScreen> {
                 color: AppColors.info,
                 onPressed: _showEditDialog,
               ),
+              // Suppression réservée à Direction / RH (T.40)
+              if (canDeleteTrucks(ref))
+                ActionButtonWidget(
+                  icon: Iconsax.trash,
+                  label: l10n.translate('trucks.delete.button'),
+                  color: AppColors.error,
+                  onPressed: () async {
+                    final deleted =
+                        await confirmAndDeleteTruck(context, ref, _truck);
+                    if (deleted && mounted) Navigator.of(context).pop();
+                  },
+                ),
             ],
           ),
         ],

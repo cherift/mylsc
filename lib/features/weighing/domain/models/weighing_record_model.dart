@@ -88,6 +88,11 @@ class WeighingRecordModel {
     this.dischargedBy,
     this.dischargedByName,
     this.dischargedAt,
+    this.clientId,
+    this.clientName,
+    this.lastEditedBy,
+    this.lastEditedByName,
+    this.lastEditedAt,
   });
 
   factory WeighingRecordModel.fromMap(Map<String, dynamic> map, String id) {
@@ -127,6 +132,11 @@ class WeighingRecordModel {
       dischargedBy: map['dischargedBy'] as String?,
       dischargedByName: map['dischargedByName'] as String?,
       dischargedAt: (map['dischargedAt'] as Timestamp?)?.toDate(),
+      clientId: map['clientId'] as String?,
+      clientName: map['clientName'] as String?,
+      lastEditedBy: map['lastEditedBy'] as String?,
+      lastEditedByName: map['lastEditedByName'] as String?,
+      lastEditedAt: (map['lastEditedAt'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -164,6 +174,17 @@ class WeighingRecordModel {
   final String? dischargedBy;
   final String? dischargedByName;
   final DateTime? dischargedAt;
+
+  // Client concerné par la pesée (CBG, TBA, GEMIC…) — nom dénormalisé
+  final String? clientId;
+  final String? clientName;
+
+  // Dernière correction (T.38) — détail dans la sous-collection `edits`
+  final String? lastEditedBy;
+  final String? lastEditedByName;
+  final DateTime? lastEditedAt;
+
+  bool get wasEdited => lastEditedAt != null;
 
   /// Date formatée pour affichage
   String get formattedDate {
@@ -223,6 +244,12 @@ class WeighingRecordModel {
       'dischargedByName': dischargedByName,
       'dischargedAt':
           dischargedAt != null ? Timestamp.fromDate(dischargedAt!) : null,
+      'clientId': clientId,
+      'clientName': clientName,
+      'lastEditedBy': lastEditedBy,
+      'lastEditedByName': lastEditedByName,
+      'lastEditedAt':
+          lastEditedAt != null ? Timestamp.fromDate(lastEditedAt!) : null,
     };
   }
 
@@ -257,6 +284,11 @@ class WeighingRecordModel {
     String? dischargedBy,
     String? dischargedByName,
     DateTime? dischargedAt,
+    String? clientId,
+    String? clientName,
+    String? lastEditedBy,
+    String? lastEditedByName,
+    DateTime? lastEditedAt,
   }) {
     return WeighingRecordModel(
       id: id ?? this.id,
@@ -290,6 +322,11 @@ class WeighingRecordModel {
       dischargedBy: dischargedBy ?? this.dischargedBy,
       dischargedByName: dischargedByName ?? this.dischargedByName,
       dischargedAt: dischargedAt ?? this.dischargedAt,
+      clientId: clientId ?? this.clientId,
+      clientName: clientName ?? this.clientName,
+      lastEditedBy: lastEditedBy ?? this.lastEditedBy,
+      lastEditedByName: lastEditedByName ?? this.lastEditedByName,
+      lastEditedAt: lastEditedAt ?? this.lastEditedAt,
     );
   }
 }

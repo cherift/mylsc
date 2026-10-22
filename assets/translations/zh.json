@@ -84,7 +84,8 @@
     "filterSelectAll": "全选",
     "filterReset": "重置",
     "filterApply": "应用",
-    "filterNoDate": "所有日期"
+    "filterNoDate": "所有日期",
+    "filterClients": "客户"
   },
   "users": {
     "management": "用户管理",
@@ -177,6 +178,15 @@
       "update": "更新",
       "success": "用户更新成功",
       "error": "错误：{error}"
+    },
+    "delete": {
+      "button": "删除",
+      "title": "删除用户",
+      "confirm": "删除用户“{name}”？",
+      "success": "用户已删除",
+      "consequences": "该账户将无法登录，也不会再出现在列表中。历史记录（称重、班次、燃油）将被保留。",
+      "blockedActiveShift": "无法删除“{name}”：有正在进行的班次，请先结束。",
+      "cannotDeleteSelf": "您不能删除自己的账户。"
     }
   },
   "settings": {
@@ -321,7 +331,8 @@
       "validation": {
         "required": "此字段为必填项",
         "yearInvalid": "年份必须在1900到{year}之间",
-        "kmInvalid": "初始里程不能超过当前里程"
+        "kmInvalid": "初始里程不能超过当前里程",
+        "poidsAVideInvalid": "空车重量无效（1,000 至 60,000 kg）"
       },
       "success": "卡车创建成功！",
       "error": "创建卡车时出错"
@@ -379,7 +390,8 @@
       "normeMoteur": "发动机标准",
       "radarNumber": "雷达编号",
       "kilometrageInitial": "初始里程",
-      "notes": "备注"
+      "notes": "备注",
+      "poidsAVide": "空车重量（kg）"
     },
     "placeholders": {
       "immatriculation": "例如：AB-123-CD",
@@ -406,7 +418,8 @@
       "garagePrestataire": "例如：杜邦车库",
       "identifiantGPS": "例如：GPS-12345",
       "fournisseurGPS": "例如：TomTom、Garmin...",
-      "notes": "其他备注..."
+      "notes": "其他备注...",
+      "poidsAVide": "例如：21500"
     },
     "configuration": {
       "config4x2": "4x2",
@@ -437,7 +450,16 @@
       "parHeures": "按发动机小时数",
       "parTemps": "按时间（月）"
     },
-    "searchHint": "按车牌或内部编号搜索..."
+    "searchHint": "按车牌或内部编号搜索...",
+    "delete": {
+      "button": "删除",
+      "title": "删除车辆",
+      "confirm": "删除车辆 {truck}？",
+      "consequences": "该车辆将从车队中移除，不再出现在列表中；其司机分配将结束。历史记录（称重、燃油、检查）将被保留。",
+      "success": "车辆已删除",
+      "blockedActiveShift": "无法删除 {truck}：该车辆有正在进行的班次。",
+      "blockedPendingFuel": "无法删除 {truck}：有待处理的加油申请，请先取消或完成加油。"
+    }
   },
   "fuel": {
     "title": "添加燃料",
@@ -507,7 +529,8 @@
     "receiptNumberRequired": "收据编号为必填项",
     "photoRequired": "必须上传凭证照片",
     "observation": "备注",
-    "fulfilledAt": "加油时间"
+    "fulfilledAt": "加油时间",
+    "quantityMismatch": "加注量必须等于申请量（{requested} L）。请更正输入的数量后再确认加油。"
   },
   "inspection": {
     "title": "车辆检查",
@@ -748,7 +771,29 @@
     "chargedBy": "装载者",
     "dischargedBy": "卸载者",
     "chargeSuccess": "装载确认成功！",
-    "dischargeSuccess": "卸载确认成功！"
+    "dischargeSuccess": "卸载确认成功！",
+    "client": "客户",
+    "selectClient": "选择客户",
+    "clientRequired": "请在记录称重前选择相关客户",
+    "noClient": "未指定客户",
+    "filterClient": "客户",
+    "vehicleEmptyWeightPrefilled": "取自车辆档案（{weight} T）— 如地磅读数不同可修改",
+    "vehicleEmptyWeightReference": "车辆档案空车重量：{weight} T",
+    "vehicleEmptyWeightMissing": "车辆档案未填写空车重量 — 请输入地磅读数",
+    "totalCount": "称重次数",
+    "totalTonnage": "总吨位",
+    "edit": {
+      "button": "更正",
+      "title": "更正称重",
+      "reason": "更正原因",
+      "reasonHint": "例如：重车重量输入错误",
+      "reasonRequired": "必须填写更正原因",
+      "ticketLocked": "只有管理员可以更正磅单号",
+      "netMustBePositive": "重车重量必须大于空车重量",
+      "noChanges": "没有需要保存的修改",
+      "saved": "称重已更正",
+      "lastEdited": "{name} 于 {date} 修改"
+    }
   },
   "storage": {
     "title": "储存区",
@@ -1024,7 +1069,12 @@
     "vacationsCount": "已完成班次 / 总计",
     "detailVacations": "班次详情",
     "filterByTruck": "按车辆筛选...",
-    "filterByDate": "按日期范围筛选"
+    "filterByDate": "按日期范围筛选",
+    "allClients": "所有客户",
+    "totalCount": "记录数",
+    "totalValue": "合计",
+    "totalRow": "合计",
+    "exportSummary": "导出完成 — {countLabel}：{count} · {totalLabel}：{total}"
   },
   "photos": {
     "title": "照片",
@@ -1195,5 +1245,19 @@
     "laterButton": "稍后",
     "currentVersion": "当前版本",
     "latestVersion": "最新版本"
+  },
+  "clients": {
+    "title": "客户",
+    "createClient": "新建客户",
+    "editClient": "编辑客户",
+    "deleteClient": "删除客户",
+    "deleteConfirm": "删除客户“{name}”？称重时将不再显示该客户，但在已有称重记录中仍可见。",
+    "deleted": "客户已删除",
+    "name": "客户名称",
+    "nameRequired": "客户名称为必填项",
+    "nameAlreadyExists": "已存在同名客户",
+    "code": "代码（可选）",
+    "description": "描述（可选）",
+    "noClients": "暂无客户"
   }
 }

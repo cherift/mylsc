@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -61,6 +62,7 @@ class AuthController extends StateNotifier<AsyncValue<UserModel?>> {
     final savedUser = await _sessionService.getSession();
     if (savedUser != null) {
       state = AsyncValue.data(savedUser);
+      unawaited(_verifyAccountStillActive(savedUser.id));
       return;
     }
 
@@ -70,7 +72,7 @@ class AuthController extends StateNotifier<AsyncValue<UserModel?>> {
     if (firebaseUser != null) {
       try {
         final profile = await _authRepository.getUserProfile(firebaseUser.uid);
-        if (profile != null) {
+        if (profile != null && profile.isActive) {
           state = AsyncValue.data(profile);
           return;
         }
@@ -80,6 +82,17 @@ class AuthController extends StateNotifier<AsyncValue<UserModel?>> {
     }
 
     state = const AsyncValue.data(null);
+  }
+
+  /// Session restaurée hors ligne : vérifie en arrière-plan que le compte
+  /// n'a pas été désactivé / supprimé depuis (T.39), sinon déconnecte.
+  Future<void> _verifyAccountStillActive(String userId) async {
+    try {
+      final profile = await _authRepository.getUserProfile(userId);
+      if (profile != null && !profile.isActive) await signOut();
+    } catch (_) {
+      // Hors ligne : on garde la session, vérification au prochain lancement
+    }
   }
 
   /// Connexion avec email ou téléphone + mot de passe

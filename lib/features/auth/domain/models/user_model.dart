@@ -25,6 +25,9 @@ class UserModel {
     this.fleetId,
     this.managerId,
     this.managerName,
+    this.isDeleted = false,
+    this.deletedAt,
+    this.deletedBy,
   });
 
   /// Créer un UserModel depuis Firebase User
@@ -70,6 +73,9 @@ class UserModel {
       fleetId: map['fleetId'] as String?,
       managerId: map['managerId'] as String?,
       managerName: map['managerName'] as String?,
+      isDeleted: map['isDeleted'] as bool? ?? false,
+      deletedAt: _parseDateTime(map['deletedAt']),
+      deletedBy: map['deletedBy'] as String?,
     );
   }
 
@@ -117,6 +123,12 @@ class UserModel {
   final String? fleetId;
   final String? managerId;
   final String? managerName;
+
+  /// Suppression (T.39) : désactivation logique + masqué des listes.
+  /// L'historique (pesées, vacations, carburant) reste intact.
+  final bool isDeleted;
+  final DateTime? deletedAt;
+  final String? deletedBy;
 
   /// Obtenir le rôle utilisateur en tant qu'enum
   UserRole? get userRole => UserRole.fromString(role);
@@ -210,6 +222,9 @@ class UserModel {
       'fleetId': fleetId,
       'managerId': managerId,
       'managerName': managerName,
+      'isDeleted': isDeleted,
+      'deletedAt': deletedAt?.toIso8601String(),
+      'deletedBy': deletedBy,
     };
   }
 
@@ -234,6 +249,9 @@ class UserModel {
     String? fleetId,
     String? managerId,
     String? managerName,
+    bool? isDeleted,
+    DateTime? deletedAt,
+    String? deletedBy,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -256,6 +274,9 @@ class UserModel {
       fleetId: fleetId ?? this.fleetId,
       managerId: managerId ?? this.managerId,
       managerName: managerName ?? this.managerName,
+      isDeleted: isDeleted ?? this.isDeleted,
+      deletedAt: deletedAt ?? this.deletedAt,
+      deletedBy: deletedBy ?? this.deletedBy,
     );
   }
 }
